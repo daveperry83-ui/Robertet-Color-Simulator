@@ -41,6 +41,7 @@ if lang == "Español":
         "p1": "Muestra A", "p2": "Muestra B (Comparativa)",
         "pigment": "Pigmento", "matrix": "Matriz Base", "m_opts": ["Agua", "Leche", "Aceite"],
         "temp": "Temp. Proceso (°C)", "ph": "pH", "months": "Meses Anaquel",
+        "storage": "Temp. Almacén (°C)",
         "compare": "Modo Comparativo", "ret": "Retención Final",
         "uv": "Empaque (Filtro UV)", "uv_opts": ["Transparente (UV Alto)", "Semi-Opaco", "Opaco/Lata (Sin UV)"],
         "app": "Aplicación Final", "apps": ["Beverages", "Dairy", "Bakery", "Meat", "Sauces", "Confectionery"],
@@ -53,6 +54,7 @@ else:
         "p1": "Sample A", "p2": "Sample B (Comparative)",
         "pigment": "Pigment", "matrix": "Base Matrix", "m_opts": ["Water", "Milk", "Oil"],
         "temp": "Process Temp (°C)", "ph": "pH Level", "months": "Shelf Life Months",
+        "storage": "Storage Temp (°C)",
         "compare": "Comparison Mode", "ret": "Final Retention",
         "uv": "Packaging (UV Filter)", "uv_opts": ["Clear (High UV)", "Semi-Opaque", "Opaque/Can (No UV)"],
         "app": "Target Application", "apps": ["Beverages", "Dairy", "Bakery", "Meat", "Sauces", "Confectionery"],
@@ -78,10 +80,13 @@ st.sidebar.markdown("--- \n### ⚙️ Global Parameters")
 app_target = st.sidebar.selectbox(T["app"], T["apps"])
 temp = st.sidebar.slider(T["temp"], 20, 180, 90) 
 ph_val = st.sidebar.slider(T["ph"], 2.0, 10.0, 7.0)
+
+st.sidebar.markdown("--- \n### 📦 Shelf Life Parameters")
+st_temp = st.sidebar.slider(T["storage"], 4, 40, 25)
 pkg_uv = st.sidebar.selectbox(T["uv"], T["uv_opts"])
 target_m = st.sidebar.slider(T["months"], 1, 24, 6)
 
-# 4. LÓGICA QUÍMICA
+# 4. LÓGICA QUÍMICA COMBINADA (PROCESO + ANAQUEL)
 def get_props(name, ph):
     colors = {"Beta-carotene":"#FFB300", "Annato":"#FF8C00", "Paprika":"#E63900", "Norbixin":"#D2691E", 
               "Curcumin":"#FFEA00", "Natural Chlorophyll":"#228B22", "Red Beet":"#C71585", "Spirulina":"#4169E1"}
@@ -93,8 +98,10 @@ def get_props(name, ph):
              "Curcumin":0.01, "Natural Chlorophyll":0.015, "Red Beet":0.04, "Spirulina":0.15}
     return c, rates.get(name, 0.01)
 
-def run_sim(name, matrix, t_c, ph):
+def run_sim(name, matrix, t_c, ph, storage_t, pkg, months):
     color, base_k = get_props(name, ph)
+    
+    # 1. Proceso Térmico (Minutos)
     t_min = np.linspace(0, 60, 100)
     k_p = base_k * (t_c / 85.0)**2.5 
     
@@ -102,12 +109,24 @@ def run_sim(name, matrix, t_c, ph):
     if is_oil and name in ["Norbixin", "Red Beet", "Spirulina"]: k_p = 999
     elif ph < 4 and name == "Norbixin": k_p = 999
     
-    stab = 100 * np.exp(-k_p * t_min)
-    return t_min, stab, color
+    stab_proc = 100 * np.exp(-k_p * t_min)
+    
+    # 2. Vida de Anaquel (Días)
+    t_days = np.linspace(0, months * 30, 100)
+    uv_factor = 1.2
+    if pkg == T["uv_opts"][0] and name in ["Curcumin", "Natural Chlorophyll", "Spirulina"]:
+        uv_factor = 4.0 # Alta degradación por luz
+        
+    k_s = (base_k * 0.015) * (storage_t / 20.0) * uv_factor
+    # El anaquel inicia donde terminó el proceso
+    stab_shelf = stab_proc[-1] * np.exp(-k_s * t_days)
+    
+    return t_min, stab_proc, t_days, stab_shelf, color
 
-tp1, sp1, col1 = run_sim(p1_name, p1_matrix, temp, ph_val)
+# Ejecutar Cálculos
+tp1, sp1, ts1, ss1, col1 = run_sim(p1_name, p1_matrix, temp, ph_val, st_temp, pkg_uv, target_m)
 if compare_on:
-    tp2, sp2, col2 = run_sim(p2_name, p2_matrix, temp, ph_val)
+    tp2, sp2, ts2, ss2, col2 = run_sim(p2_name, p2_matrix, temp, ph_val, st_temp, pkg_uv, target_m)
 
 # 5. DASHBOARD
 st.title(T["title"])
@@ -127,10 +146,19 @@ with tab_p:
         fig, ax = plt.subplots(figsize=(10, 4.5))
         ax.plot(tp1, sp1, color=col1, lw=4, label=f"A: {p1_name}")
         if compare_on: ax.plot(tp2, sp2, color=col2, lw=3, ls="--", label=f"B: {p2_name}")
-        ax.set_ylim(-5, 105); ax.legend(); ax.grid(alpha=0.2); st.pyplot(fig)
+        ax.set_ylim(-5, 105); ax.set_xlabel("Minutos / Minutes"); ax.legend(); ax.grid(alpha=0.2); st.pyplot(fig)
 
 with tab_s:
-    st.info(f"Shelf life logic active for **{app_target}**. Packaging: {pkg_uv}.")
+    c1_s, c2_s = st.columns([1, 2.5])
+    with c1_s:
+        display_res(p1_name, ss1[-1], col1, "A")
+        if compare_on: display_res(p2_name, ss2[-1], col2, "B")
+        st.info(f"**Storage Info:** {pkg_uv} @{st_temp}°C")
+    with c2_s:
+        fig_s, ax_s = plt.subplots(figsize=(10, 4.5))
+        ax_s.plot(ts1, ss1, color=col1, lw=4, label=f"A: {p1_name}")
+        if compare_on: ax_s.plot(ts2, ss2, color=col2, lw=3, ls="--", label=f"B: {p2_name}")
+        ax_s.set_ylim(-5, 105); ax_s.set_xlabel("Días / Days"); ax_s.legend(); ax_s.grid(alpha=0.2); st.pyplot(fig_s)
 
 with tab_r:
     st.warning(T["beta_msg"])
