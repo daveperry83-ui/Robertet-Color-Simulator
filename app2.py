@@ -116,3 +116,60 @@ tab_p, tab_s, tab_r = st.tabs([T["t1"], T["t2"], T["t3"]])
 def display_res(name, stab, color, label):
     st.markdown(f'<div style="background-color:{color}; opacity:{max(0.1, stab/100)}; height:70px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; border:1px solid #ddd; margin-bottom:10px;">{label}: {name}</div>', unsafe_allow_html=True)
     st.metric(f"{T['ret']} ({label})", f"{stab:.1f}%")
+
+with tab_p:
+    c1, c2 = st.columns([1, 2.5])
+    with c1:
+        display_res(p1_name, sp1[-1], col1, "A")
+        if compare_on: display_res(p2_name, sp2[-1], col2, "B")
+        st.info(f"**{T['note']}** @{temp}°C / App: {app_target}")
+    with c2:
+        fig, ax = plt.subplots(figsize=(10, 4.5))
+        ax.plot(tp1, sp1, color=col1, lw=4, label=f"A: {p1_name}")
+        if compare_on: ax.plot(tp2, sp2, color=col2, lw=3, ls="--", label=f"B: {p2_name}")
+        ax.set_ylim(-5, 105); ax.legend(); ax.grid(alpha=0.2); st.pyplot(fig)
+
+with tab_s:
+    st.info(f"Shelf life logic active for **{app_target}**. UV Packaging: {pkg_uv}.")
+
+with tab_r:
+    st.warning(T["beta_msg"])
+    st.subheader("🎯 Tono Objetivo / Target Hue")
+    
+    col_p, col_r = st.columns([1, 2])
+    with col_p:
+        target_color = st.color_picker("Color Picker", "#FF8C00")
+        st.markdown(f'<div style="background-color:{target_color}; height:100px; border-radius:10px; border: 1px solid #ccc;"></div>', unsafe_allow_html=True)
+        
+    with col_r:
+        rgb = mcolors.to_rgb(target_color)
+        hsv = colorsys.rgb_to_hsv(*rgb)
+        hue = hsv[0] * 360 
+        
+        cands = []
+        if hue >= 330 or hue <= 20: cands = ["Red Beet", "Paprika"]
+        elif 20 < hue <= 45: cands = ["Paprika", "Annato", "Beta-carotene"]
+        elif 45 < hue <= 75: cands = ["Curcumin", "Beta-carotene"]
+        elif 75 < hue <= 160: cands = ["Natural Chlorophyll"]
+        elif 160 < hue <= 260: cands = ["Spirulina"]
+        else: cands = ["Red Beet"]
+        
+        rec = None
+        is_oil = (p1_matrix in ["Oil", "Aceite"])
+        for cand in cands:
+            ok = True
+            if is_oil and cand in ["Norbixin", "Red Beet", "Spirulina"]: ok = False
+            elif cand == "Norbixin" and ph_val < 4: ok = False
+            elif temp > 130 and cand in ["Spirulina", "Red Beet"]: ok = False
+            if ok:
+                rec = cand
+                break
+        
+        st.markdown("### 🏆 Robertet Recommendation")
+        if rec:
+            st.success(f"**MATCH:** {rec}.")
+            st.write(f"Sugerido para **{app_target}** en matriz de **{p1_matrix}**.")
+        else:
+            st.error("❌ No hay pigmento natural viable para estas condiciones.")
+
+st.caption("Confidential Robertet R&D - Regional Division.")
