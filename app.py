@@ -57,4 +57,80 @@ def get_dynamic_color(name, stability_pct, ph):
     
     # Viraje por pH
     if name == "Red Beet":
-        if ph > 7.0: color = "#8B008B"
+        if ph > 7.0: color = "#8B008B" 
+        if ph > 8.5: color = "#5D4037" 
+    elif name == "Curcumin":
+        if ph > 8.0: color = "#FF4500" 
+    elif name == "Natural Chlorophyll":
+        if ph < 5.0: color = "#6B8E23" 
+
+    return color
+
+# 4. CÁLCULO CINÉTICO
+time = np.linspace(0, 60, 100)
+rates = {
+    "Beta-carotene": 0.001, "Annato": 0.002, "Paprika": 0.003,
+    "Norbixin": 0.005, "Curcumin": 0.01, "Natural Chlorophyll": 0.015,
+    "Red Beet": 0.04, "Spirulina": 0.15
+}
+
+k = rates[colorant] * (temp / 85.0)**2
+if alcohol > 15: k *= 1.4
+stability = 100 * np.exp(-k * time)
+
+# Reglas de incompatibilidad
+error_msg = None
+if matrix == "Oil" and colorant in ["Norbixin", "Red Beet", "Spirulina"]:
+    stability = np.zeros_like(time)
+    error_msg = f"{colorant} is insoluble in Oil matrices."
+elif ph_val < 4.0 and colorant == "Norbixin":
+    stability = np.zeros_like(time)
+    error_msg = "Norbixin precipitates at pH < 4.0."
+
+# 5. RENDERIZADO DEL DASHBOARD
+st.title("🔬 Color Stability Intelligence Dashboard")
+st.markdown("---")
+
+col_info, col_chart = st.columns([1, 2.5])
+
+with col_info:
+    st.subheader("Visual Analysis")
+    
+    current_color = get_dynamic_color(colorant, stability[-1], ph_val)
+    opacity = max(0.1, stability[-1] / 100)
+    
+    st.markdown(f"""
+        <div class="color-box" style="background-color: {current_color}; opacity: {opacity};">
+            SIMULATED APPEARANCE
+        </div>
+        """, unsafe_allow_html=True)
+    
+    final_stab = stability[-1]
+    st.metric("Final Retention", f"{final_stab:.1f}%")
+    
+    if error_msg:
+        st.error(f"⚠️ {error_msg}")
+    elif final_stab > 80:
+        st.success("✅ STATUS: RECOMMENDED")
+    else:
+        st.error("❌ STATUS: HIGH RISK")
+
+    # ¡AQUÍ REGRESA LA NOTA DE APLICACIÓN!
+    st.info(f"**Technical Note for {application}:** When using {colorant} in a {matrix} base, consider that proper {'emulsification' if matrix == 'Water' and colorant not in ['Red Beet', 'Norbixin'] else 'dispersion'} is key for shelf-life stability.")
+
+with col_chart:
+    fig, ax = plt.subplots(figsize=(10, 4.8))
+    ax.plot(time, stability, color=current_color, linewidth=4)
+    ax.fill_between(time, stability, color=current_color, alpha=0.1)
+    ax.set_ylim(-5, 105)
+    ax.set_title(f"Degradación Térmica: {colorant} en {application}", fontsize=12, fontweight='bold')
+    ax.set_ylabel("% Stability")
+    ax.set_xlabel("Time (Minutes)")
+    ax.grid(True, alpha=0.2)
+    
+    ax.text(0.98, 0.02, 'ROBERTET R&D SIMULATOR', transform=ax.transAxes, 
+            ha='right', color='gray', fontsize=8, alpha=0.5)
+    
+    st.pyplot(fig)
+
+st.caption("Confidential: Robertet Ingredients Division - Predictive kinetic model for regional technical support.")
