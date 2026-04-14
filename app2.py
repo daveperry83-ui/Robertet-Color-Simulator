@@ -5,18 +5,15 @@ import matplotlib
 import colorsys
 import matplotlib.colors as mcolors
 
-# Configuración estable para servidores
+# Renderizado web estable
 matplotlib.use('Agg') 
 
-# 1. CONFIGURACIÓN DE PÁGINA
+# 1. CONFIGURACIÓN
 st.set_page_config(page_title="Robertet R&D Color Intelligence", layout="wide")
 
 # ==========================================
 # 🔒 SEGURIDAD (PIN: LatAm2026)
 # ==========================================
-if "acceso_concedido" not in st.session_state:
-    st.session_state.acceder = False
-
 if "acceso_concedido" not in st.session_state:
     st.session_state.acceso_concedido = False
 
@@ -34,30 +31,32 @@ if not st.session_state.acceso_concedido:
                 st.error("❌ Access Denied")
     st.stop() 
 
-# 2. TRADUCCIONES
+# 2. DICCIONARIOS MULTILINGÜES
 lang = st.sidebar.selectbox("🌐 Language / Idioma", ["Español", "English"])
 
 if lang == "Español":
     T = {
         "title": "🔬 Inteligencia de Color R&D - Robertet",
-        "t1": "🔥 Proceso Térmico", "t2": "📅 Vida de Anaquel", "t3": "💡 Recomendador",
+        "t1": "🔥 Proceso Térmico", "t2": "📅 Vida de Anaquel", "t3": "💡 Recomendador (BETA)",
         "p1": "Muestra A", "p2": "Muestra B (Comparativa)",
         "pigment": "Pigmento", "matrix": "Matriz Base", "m_opts": ["Agua", "Leche", "Aceite"],
         "temp": "Temp. Proceso (°C)", "ph": "pH", "months": "Meses Anaquel",
         "compare": "Modo Comparativo", "ret": "Retención Final",
         "uv": "Protección UV", "uv_opts": ["Ninguna", "Media", "Total"],
-        "note": "Análisis Técnico:"
+        "app": "Aplicación Final", "apps": ["Beverages", "Dairy", "Bakery", "Meat", "Sauces", "Confectionery"],
+        "note": "Nota Técnica R&D:", "beta_msg": "🧪 VERSIÓN BETA: Algoritmo predictivo en fase de calibración."
     }
 else:
     T = {
         "title": "🔬 R&D Color Intelligence - Robertet",
-        "t1": "🔥 Thermal Process", "t2": "📅 Shelf Life", "t3": "💡 Smart Recommender",
+        "t1": "🔥 Thermal Process", "t2": "📅 Shelf Life", "t3": "💡 Smart Recommender (BETA)",
         "p1": "Sample A", "p2": "Sample B (Comparative)",
         "pigment": "Pigment", "matrix": "Base Matrix", "m_opts": ["Water", "Milk", "Oil"],
         "temp": "Process Temp (°C)", "ph": "pH Level", "months": "Shelf Life Months",
         "compare": "Comparison Mode", "ret": "Final Retention",
         "uv": "UV Protection", "uv_opts": ["None", "Medium", "Total"],
-        "note": "Technical Insight:"
+        "app": "Target Application", "apps": ["Beverages", "Dairy", "Bakery", "Meat", "Sauces", "Confectionery"],
+        "note": "R&D Technical Insight:", "beta_msg": "🧪 BETA VERSION: Predictive algorithm under lab calibration."
     }
 
 pigments = ["Beta-carotene", "Annato", "Paprika", "Norbixin", "Curcumin", "Natural Chlorophyll", "Red Beet", "Spirulina"]
@@ -76,6 +75,7 @@ if compare_on:
     p2_matrix = st.sidebar.radio(f"{T['matrix']} (B)", T["m_opts"], horizontal=True, key="m2")
 
 st.sidebar.markdown("--- \n### ⚙️ Global Parameters")
+app_target = st.sidebar.selectbox(T["app"], T["apps"])
 temp = st.sidebar.slider(T["temp"], 20, 180, 90) 
 ph_val = st.sidebar.slider(T["ph"], 2.0, 10.0, 7.0)
 pkg_uv = st.sidebar.selectbox(T["uv"], T["uv_opts"])
@@ -96,12 +96,9 @@ def get_props(name, ph):
 def run_sim(name, matrix, t_c, ph):
     color, base_k = get_props(name, ph)
     t_min = np.linspace(0, 60, 100)
-    # Factor de matriz (Aceite es más crítico para hidrosolubles)
     k_p = base_k * (t_c / 85.0)**2.5 
     
-    # Lógica de Incompatibilidad (Aceite)
-    # Nota: Leche y Agua se consideran compatibles para la mayoría de los extractos estándar de Robertet
-    is_oil = (matrix == "Oil" or matrix == "Aceite")
+    is_oil = (matrix in ["Oil", "Aceite"])
     if is_oil and name in ["Norbixin", "Red Beet", "Spirulina"]: k_p = 999
     elif ph < 4 and name == "Norbixin": k_p = 999
     
@@ -117,62 +114,5 @@ st.title(T["title"])
 tab_p, tab_s, tab_r = st.tabs([T["t1"], T["t2"], T["t3"]])
 
 def display_res(name, stab, color, label):
-    st.markdown(f'<div style="background-color:{color}; opacity:{max(0.1, stab/100)}; height:70px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; border:1px solid #ddd;">{label}: {name}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="background-color:{color}; opacity:{max(0.1, stab/100)}; height:70px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; border:1px solid #ddd; margin-bottom:10px;">{label}: {name}</div>', unsafe_allow_html=True)
     st.metric(f"{T['ret']} ({label})", f"{stab:.1f}%")
-
-with tab_p:
-    c1, c2 = st.columns([1, 2.5])
-    with c1:
-        display_res(p1_name, sp1[-1], col1, "A")
-        if compare_on: display_res(p2_name, sp2[-1], col2, "B")
-        st.info(f"**{T['note']}** @{temp}°C")
-    with c2:
-        fig, ax = plt.subplots(figsize=(10, 4.5))
-        ax.plot(tp1, sp1, color=col1, lw=4, label=f"A: {p1_name}")
-        if compare_on: ax.plot(tp2, sp2, color=col2, lw=3, ls="--", label=f"B: {p2_name}")
-        ax.set_ylim(-5, 105); ax.legend(); ax.grid(alpha=0.2); st.pyplot(fig)
-
-with tab_s:
-    st.info("Shelf life logic active. Model assumes controlled storage conditions.")
-
-with tab_r:
-    st.subheader("🎯 Búsqueda por Tono / Target Hue Search")
-    st.markdown("Selecciona el color deseado. El sistema recomendará el pigmento de Robertet ideal para tu matriz de **Leche/Agua/Aceite**.")
-    
-    col_picker, col_res = st.columns([1, 2])
-    with col_picker:
-        target_color = st.color_picker("Elige un color / Pick a color", "#FF8C00")
-        st.markdown(f'<div style="background-color:{target_color}; height:100px; border-radius:10px; border: 1px solid #ccc;"></div>', unsafe_allow_html=True)
-        
-    with col_res:
-        rgb = mcolors.to_rgb(target_color)
-        hsv = colorsys.rgb_to_hsv(*rgb)
-        hue = hsv[0] * 360 
-        
-        candidatos = []
-        if hue >= 330 or hue <= 20: candidatos = ["Red Beet", "Paprika"]
-        elif 20 < hue <= 45: candidatos = ["Paprika", "Annato", "Beta-carotene"]
-        elif 45 < hue <= 75: candidatos = ["Curcumin", "Beta-carotene"]
-        elif 75 < hue <= 160: candidatos = ["Natural Chlorophyll"]
-        elif 160 < hue <= 260: candidatos = ["Spirulina"]
-        else: candidatos = ["Red Beet"]
-        
-        rec = None
-        is_oil = (p1_matrix == "Oil" or p1_matrix == "Aceite")
-        for cand in candidatos:
-            viable = True
-            if is_oil and cand in ["Norbixin", "Red Beet", "Spirulina"]: viable = False
-            elif cand == "Norbixin" and ph_val < 4: viable = False
-            elif temp > 130 and cand in ["Spirulina", "Red Beet"]: viable = False
-            if viable:
-                rec = cand
-                break
-        
-        st.markdown("### 🏆 Resultado R&D")
-        if rec:
-            st.success(f"**MATCH:** Sugerimos **{rec}**.")
-            st.write(f"Compatible con la matriz de **{p1_matrix}** a {temp}°C.")
-        else:
-            st.error("❌ **INCOMPATIBILIDAD:** No hay pigmento natural para este tono bajo estas condiciones extremas.")
-
-st.caption("Confidential Robertet R&D - Regional Division.")
