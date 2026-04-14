@@ -3,131 +3,98 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 import os
-from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 
-# Configuración de renderizado para servidores web
+# Configuración técnica para evitar pantallas negras
 matplotlib.use('Agg') 
 
-# 1. ESTILO DE LA PÁGINA
-st.set_page_config(page_title="Robertet Color Stability Dashboard", layout="wide", initial_sidebar_state="expanded")
+# 1. CONFIGURACIÓN DE MARCA Y ESTILO
+st.set_page_config(page_title="Robertet R&D Simulator", layout="wide")
 
-# CSS personalizado para mejorar el aspecto
+# CSS para un look más corporativo
 st.markdown("""
     <style>
-    .main { background-color: #f5f7f9; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; border: 1px solid #e0e0e0; }
+    .main { background-color: #f8f9fa; }
+    .stMetric { border: 1px solid #d1d8e0; padding: 20px; border-radius: 10px; background-color: white; }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🔬 Colorants Stability & Compatibility Simulator")
-st.markdown("---")
+# 2. PANEL LATERAL (INPUTS)
+# Logo de Robertet directo desde su web para que nunca falle
+st.sidebar.image("https://www.robertet.com/wp-content/uploads/2021/03/Logo-Robertet-1.png", width=200)
+st.sidebar.header("Formulation Controls")
 
-# 2. BARRA LATERAL (CONTROL DE VARIABLES)
-st.sidebar.image("https://www.robertet.com/wp-content/uploads/2021/03/Logo-Robertet-1.png", width=200) # Logo directo de URL para seguridad
-st.sidebar.header("Formulation Parameters")
-
-colorant = st.sidebar.selectbox("Selected Pigment", 
+colorant = st.sidebar.selectbox("Pigment", 
     ["Beta-carotene", "Annato", "Paprika", "Norbixin", "Curcumin", "Natural Chlorophyll", "Red Beet", "Spirulina"])
 
-matrix = st.sidebar.radio("Base Matrix", ["Water", "Milk", "Oil"], horizontal=True)
+matrix = st.sidebar.radio("Matrix Base", ["Water", "Milk", "Oil"], horizontal=True)
 
-application = st.sidebar.selectbox("Application", 
-    ["Beverages", "Dairy", "Bakery", "Meat", "Sauces", "Confectionery"])
-
-temp = st.sidebar.slider("Temperature (°C)", 20, 130, 90)
+temp = st.sidebar.slider("Process Temperature (°C)", 20, 130, 90)
 ph_val = st.sidebar.slider("pH Level", 2.0, 10.0, 7.0)
-alcohol = st.sidebar.slider("Alcohol Content (%)", 0, 40, 0)
+alcohol = st.sidebar.slider("Alcohol %", 0, 40, 0)
 
-# 3. LÓGICA CIENTÍFICA (CINÉTICA QUÍMICA)
+# 3. LÓGICA DE SIMULACIÓN (DATOS CIENTÍFICOS)
 time = np.linspace(0, 60, 100)
-
-# Tasas de degradación base (Valores reales de laboratorio)
 rates = {
     "Beta-carotene": 0.001, "Annato": 0.002, "Paprika": 0.003,
     "Norbixin": 0.005, "Curcumin": 0.01, "Natural Chlorophyll": 0.015,
     "Red Beet": 0.04, "Spirulina": 0.15
 }
 
-# Factores de estrés combinados
-stress = (temp / 85.0)**2
-if alcohol > 15: stress *= 1.4
-if ph_val < 4.0 and colorant in ["Spirulina", "Chlorophyll"]: stress *= 2.0
+# Cálculo de estrés cinético
+k = rates[colorant] * (temp / 85.0)**2
+if alcohol > 15: k *= 1.3
+stability = 100 * np.exp(-k * time)
 
-current_rate = rates[colorant] * stress
-stability = 100 * np.exp(-current_rate * time)
-
-# Reglas de Incompatibilidad Crítica
-warning_msg = None
+# Reglas de compatibilidad Robertet
+error_msg = None
 if matrix == "Oil" and colorant in ["Norbixin", "Red Beet", "Spirulina"]:
     stability = np.zeros_like(time)
-    warning_msg = f"CRITICAL: {colorant} is insoluble in Oil matrices."
+    error_msg = f"Incompatibility Detected: {colorant} requires a water-soluble environment."
 elif ph_val < 4.0 and colorant == "Norbixin":
     stability = np.zeros_like(time)
-    warning_msg = "CRITICAL: Norbixin will precipitate at pH < 4.0."
+    error_msg = "pH Alert: Norbixin precipitates in acidic conditions (< 4.0)."
 
-# 4. DASHBOARD LAYOUT
-col_metric, col_plot = st.columns([1, 2.5])
+# 4. DISEÑO DEL DASHBOARD
+st.title("🔬 Color Stability Intelligence Dashboard")
+st.markdown("---")
 
-with col_metric:
-    st.subheader("Key Metrics")
-    final_stab = stability[-1]
+col_info, col_chart = st.columns([1, 2.5])
+
+with col_info:
+    st.subheader("Analysis Results")
+    final_res = stability[-1]
+    st.metric("Final Retention (%)", f"{final_res:.1f}%")
     
-    st.metric("Final Stability (60m)", f"{final_stab:.1f}%")
-    
-    # Indicador de estado
-    if warning_msg:
-        st.error(warning_msg)
-    elif final_stab > 85:
-        st.success("STATUS: Optimal Choice")
-    elif final_stab > 60:
-        st.warning("STATUS: Moderate Degradation")
+    if error_msg:
+        st.error(f"⚠️ {error_msg}")
+    elif final_res > 85:
+        st.success("✅ HIGHLY STABLE: Recommended for this process.")
+    elif final_res > 60:
+        st.warning("⚠️ MODERATE LOSS: Validation in final matrix suggested.")
     else:
-        st.error("STATUS: High Risk / Not Recommended")
+        st.error("❌ NOT RECOMMENDED: High thermal degradation.")
 
-    st.info(f"**Application Info:** {application} typically requires {colorant} to be {'emulsified' if matrix == 'Water' else 'dispersed'}.")
+    st.write(f"**Application Note:** Ensure proper emulsification if using {colorant} in {matrix}-based beverages.")
 
-with col_plot:
-    # Colores representativos para la gráfica
-    color_map = {
-        "Beta-carotene": "#FFB300", "Annato": "#FF8C00", "Paprika": "#E63900",
-        "Norbixin": "#D2691E", "Curcumin": "#FFEA00", "Natural Chlorophyll": "#228B22",
-        "Red Beet": "#C71585", "Spirulina": "#4169E1"
-    }
+with col_chart:
+    # Mapeo de colores visuales
+    c_map = {"Beta-carotene":"orange", "Annato":"#FF8C00", "Paprika":"red", "Norbixin":"#D2691E", 
+             "Curcumin":"yellow", "Natural Chlorophyll":"green", "Red Beet":"#C71585", "Spirulina":"blue"}
     
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.plot(time, stability, color=color_map[colorant], linewidth=4, label=colorant)
-    ax.fill_between(time, stability, color=color_map[colorant], alpha=0.1)
-    
-    # Estilo de la gráfica
+    fig, ax = plt.subplots(figsize=(10, 4.5))
+    ax.plot(time, stability, color=c_map[colorant], linewidth=4)
+    ax.fill_between(time, stability, color=c_map[colorant], alpha=0.1)
     ax.set_ylim(-5, 105)
-    ax.set_title(f"Thermal Degradation Analysis - {colorant}", fontsize=14, fontweight='bold')
+    ax.set_title(f"Thermal Degradation Curve: {colorant}", fontsize=12, fontweight='bold')
+    ax.set_ylabel("Stability %")
     ax.set_xlabel("Time (Minutes)")
-    ax.set_ylabel("Stability (%)")
-    ax.grid(True, linestyle='--', alpha=0.3)
+    ax.grid(True, alpha=0.2)
     
-    # Trademark
-    ax.text(0.98, 0.02, 'ROBERTET R&D SIMULATOR', transform=ax.transAxes, 
-            ha='right', color='gray', fontsize=10, alpha=0.5, fontweight='bold')
+    # Marca de agua profesional
+    ax.text(0.98, 0.05, 'ROBERTET GROUP - CONFIDENTIAL', transform=ax.transAxes, 
+            ha='right', color='gray', fontsize=9, alpha=0.4, fontweight='bold')
     
     st.pyplot(fig)
 
 st.markdown("---")
-st.caption("Confidential: Robertet Ingredients Division - Simulation based on theoretical kinetic models.")
-for opt in logo_options:
-    if os.path.exists(opt):
-        logo_path = opt
-        break
-
-if logo_path:
-    try:
-        img = matplotlib.image.imread(logo_path)
-        imagebox = OffsetImage(img, zoom=0.1)
-        ab = AnnotationBbox(imagebox, (0.95, 0.05), xycoords='axes fraction', box_alignment=(1, 0), frameon=False)
-        ax.add_artist(ab)
-    except:
-        ax.text(0.95, 0.05, 'ROBERTET', transform=ax.transAxes, ha='right', alpha=0.5)
-else:
-    ax.text(0.95, 0.05, 'ROBERTET GROUP', transform=ax.transAxes, ha='right', alpha=0.5)
-
-st.pyplot(fig)
-st.metric("Final Retention", f"{stability[-1]:.1f}%")
+st.caption("Theoretical simulation based on Robertet's internal kinetic benchmarks for the Latin American market.")
