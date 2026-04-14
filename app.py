@@ -18,7 +18,7 @@ if not st.session_state.acceso_concedido:
         st.markdown("### 🔒 R&D Portal Access")
         clave = st.text_input("PIN:", type="password")
         if st.button("Unlock"):
-            if clave == "LatAm2026": # Tu contraseña
+            if clave == "LatAm2026": 
                 st.session_state.acceso_concedido = True
                 st.rerun()
             else: st.error("❌ Access Denied.")
@@ -64,11 +64,36 @@ st.markdown("""
 # --- SIDEBAR: LENGUAJE ---
 st.sidebar.image("https://www.robertet.com/wp-content/uploads/2021/03/Logo-Robertet-1.png", width=180)
 lang = st.sidebar.radio("🌐 Language / Idioma", ["English", "Español", "Português"])
-_ = t[lang] # Selector de idioma activo
+_ = t[lang] 
 
 st.title(_["title"])
 st.markdown("---")
 
 # --- LÓGICA DE COLOR Y CINÉTICA ---
 def get_color(name, ph):
-    colors = {"Beta-carotene": "#FFB300", "Annato": "#FF8C00", "Paprika": "#E63900", "Norbixin": "#D2691E", "Curcumin": "#FFEA00", "Natural Chlorophyll": "#228B22", "Red Beet": "#C
+    # Lista formateada verticalmente para evitar errores al copiar
+    colors = {
+        "Beta-carotene": "#FFB300", 
+        "Annato": "#FF8C00", 
+        "Paprika": "#E63900", 
+        "Norbixin": "#D2691E", 
+        "Curcumin": "#FFEA00", 
+        "Natural Chlorophyll": "#228B22", 
+        "Red Beet": "#C71585", 
+        "Spirulina": "#4169E1"
+    }
+    c = colors[name]
+    if name == "Red Beet" and ph > 7.0: c = "#8B008B"
+    if name == "Red Beet" and ph > 8.5: c = "#5D4037"
+    if name == "Curcumin" and ph > 8.0: c = "#FF4500"
+    if name == "Natural Chlorophyll" and ph < 5.0: c = "#6B8E23"
+    return c
+
+def calc_stab(name, temp, ph, matrix):
+    time = np.linspace(0, 60, 100)
+    # Lista formateada verticalmente
+    rates = {
+        "Beta-carotene": 0.001, 
+        "Annato": 0.002, 
+        "Paprika": 0.003, 
+        "Norbixin": 0.005
