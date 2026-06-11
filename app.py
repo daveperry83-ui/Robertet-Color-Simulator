@@ -59,4 +59,48 @@ if lang == "Español":
         "uv": "Empaque (Filtro UV)", "uv_opts": ["Transparente (UV Alto)", "Semi-Opaco", "Opaco/Lata (Sin UV)"],
         "app": "Aplicación Final", "apps": ["Beverages", "Dairy", "Bakery", "Meat", "Sauces", "Confectionery"],
         "note": "Nota Técnica R&D:", "beta_msg": "🧪 VERSIÓN BETA: Algoritmo predictivo en fase de calibración.",
-        "time_m": "Tiempo (Minutos)", "time_d":
+        "time_m": "Tiempo (Minutos)", "time_d": "Tiempo (Días)", "stab_pct": "Estabilidad (%)"
+    }
+else:
+    T = {
+        "title": "🔬 R&D Color Intelligence - Robertet",
+        "t1": "🔥 Thermal Process", "t2": "📅 Shelf Life", "t3": "💡 Smart Recommender (BETA)",
+        "p1": "Sample A", "p2": "Sample B (Comparative)",
+        "pigment": "Pigment", "matrix": "Base Matrix", "m_opts": ["Water", "Milk", "Oil"],
+        "temp": "Process Temp (°C)", "ph": "pH Level", "months": "Shelf Life Months",
+        "storage": "Storage Temp (°C)",
+        "compare": "Comparison Mode", "ret": "Final Retention",
+        "uv": "Packaging (UV Filter)", "uv_opts": ["Clear (High UV)", "Semi-Opaque", "Opaque/Can (No UV)"],
+        "app": "Target Application", "apps": ["Beverages", "Dairy", "Bakery", "Meat", "Sauces", "Confectionery"],
+        "note": "R&D Technical Insight:", "beta_msg": "🧪 BETA VERSION: Predictive algorithm under lab calibration.",
+        "time_m": "Time (Minutes)", "time_d": "Time (Days)", "stab_pct": "Stability (%)"
+    }
+
+pigments = ["Beta-carotene", "Annato", "Paprika", "Norbixin", "Curcumin", "Natural Chlorophyll", "Red Beet", "Spirulina"]
+
+# 3. CONTROLES LATERALES
+try:
+    st.sidebar.image("logo.png", width=180)
+except:
+    pass
+
+st.sidebar.markdown(f"### {T['p1']}")
+p1_name = st.sidebar.selectbox(f"{T['pigment']} (A)", pigments, key="p1")
+p1_matrix = st.sidebar.radio(f"{T['matrix']} (A)", T["m_opts"], horizontal=True, key="m1")
+
+compare_on = st.sidebar.checkbox(T["compare"])
+p2_name, p2_matrix = None, None
+if compare_on:
+    st.sidebar.markdown(f"--- \n### {T['p2']}")
+    p2_name = st.sidebar.selectbox(f"{T['pigment']} (B)", pigments, key="p2")
+    p2_matrix = st.sidebar.radio(f"{T['matrix']} (B)", T["m_opts"], horizontal=True, key="m2")
+
+st.sidebar.markdown("--- \n### ⚙️ Global Parameters")
+app_target = st.sidebar.selectbox(T["app"], T["apps"])
+temp = st.sidebar.slider(T["temp"], 20, 180, 90) 
+ph_val = st.sidebar.slider(T["ph"], 2.0, 10.0, 7.0)
+
+st.sidebar.markdown("--- \n### 📦 Shelf Life Parameters")
+st_temp = st.sidebar.slider(T["storage"], 4, 40, 25)
+pkg_uv = st.sidebar.selectbox(T["uv"], T["uv_opts"])
+target_m = st.sidebar.slider(T["months"], 1, 24, 6)
