@@ -5,29 +5,17 @@ import colorsys
 import matplotlib.colors as mcolors
 
 # 1. CONFIGURACIÓN DE PÁGINA
-st.set_page_config(page_title="Robertet R&D Color Intelligence", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Robertet R&D Dashboard", layout="wide", initial_sidebar_state="expanded")
 
-# --- DISEÑO PREMIUM CSS (Estilo Glide/App Nativa) ---
+# --- DISEÑO CSS LIMPIO ---
 st.markdown("""
     <style>
-    .main { background-color: #f4f7f6; font-family: 'Inter', sans-serif; }
-    /* Tarjetas de Métricas */
-    div[data-testid="metric-container"] {
-        background-color: white; border: none; padding: 20px; 
-        border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-    }
     /* Recuadros de Color Visual */
     .color-card {
-        height: 80px; border-radius: 15px; display: flex; align-items: center; 
-        justify-content: center; color: white; font-weight: 600; font-size: 1.1rem;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.1); border: 2px solid rgba(255,255,255,0.2);
-        margin-bottom: 15px; text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
-    }
-    /* Estilo de Pestañas */
-    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
-    .stTabs [data-baseweb="tab"] { 
-        height: 50px; border-radius: 10px 10px 0 0; 
-        background-color: white; padding: 0 20px; box-shadow: 0 -2px 10px rgba(0,0,0,0.02);
+        height: 90px; border-radius: 12px; display: flex; align-items: center; 
+        justify-content: center; color: white; font-weight: 600; font-size: 1.2rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: 1px solid rgba(0,0,0,0.05);
+        margin-bottom: 20px; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
     }
     </style>
     """, unsafe_allow_html=True)
@@ -147,20 +135,17 @@ tp1, sp1, ts1, ss1, col1 = run_sim(p1_name, p1_matrix, temp, ph_val, st_temp, pk
 if compare_on:
     tp2, sp2, ts2, ss2, col2 = run_sim(p2_name, p2_matrix, temp, ph_val, st_temp, pkg_uv, target_m)
 
-# Helper para gráficas Plotly
+# Helper para gráficas Plotly mejoradas
 def create_plotly_chart(x1, y1, c1, n1, x2, y2, c2, n2, x_title, y_title):
     fig = go.Figure()
-    # Muestra A (Con relleno bajo la curva)
-    fig.add_trace(go.Scatter(x=x1, y=y1, mode='lines', line=dict(color=c1, width=4), name=f"A: {n1}", fill='tozeroy', fillcolor=c1.replace(')', ', 0.1)').replace('rgb', 'rgba') if 'rgb' in c1 else f"rgba({int(c1[1:3],16)},{int(c1[3:5],16)},{int(c1[5:7],16)},0.1)"))
-    # Muestra B (Línea punteada)
+    fig.add_trace(go.Scatter(x=x1, y=y1, mode='lines', line=dict(color=c1, width=4), name=f"A: {n1}", fill='tozeroy', fillcolor=c1.replace(')', ', 0.15)').replace('rgb', 'rgba') if 'rgb' in c1 else f"rgba({int(c1[1:3],16)},{int(c1[3:5],16)},{int(c1[5:7],16)},0.15)"))
     if compare_on:
-        fig.add_trace(go.Scatter(x=x2, y=y2, mode='lines', line=dict(color=c2, width=4, dash='dash'), name=f"B: {n2}"))
+        fig.add_trace(go.Scatter(x=x2, y=y2, mode='lines', line=dict(color=c2, width=3, dash='dash'), name=f"B: {n2}"))
     
     fig.update_layout(
-        plot_bgcolor='white', paper_bgcolor='rgba(0,0,0,0)',
-        margin=dict(l=20, r=20, t=30, b=20),
-        xaxis=dict(title=x_title, showgrid=True, gridcolor='#eee', zeroline=False),
-        yaxis=dict(title=y_title, showgrid=True, gridcolor='#eee', zeroline=False, range=[-5, 105]),
+        margin=dict(l=10, r=10, t=30, b=10),
+        xaxis=dict(title=x_title, showgrid=True, gridcolor='rgba(0,0,0,0.05)', zeroline=False),
+        yaxis=dict(title=y_title, showgrid=True, gridcolor='rgba(0,0,0,0.05)', zeroline=False, range=[-5, 105]),
         hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     return fig
@@ -201,7 +186,7 @@ with tab_r:
     col_p, col_r = st.columns([1, 2])
     with col_p:
         target_color = st.color_picker("Color Picker", "#FF8C00")
-        st.markdown(f'<div style="background-color:{target_color}; height:100px; border-radius:15px; border: 2px solid #ddd; box-shadow: 0 4px 10px rgba(0,0,0,0.1);"></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="background-color:{target_color}; height:100px; border-radius:12px; border: 1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"></div>', unsafe_allow_html=True)
         
     with col_r:
         rgb = mcolors.to_rgb(target_color)
