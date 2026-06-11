@@ -33,10 +33,52 @@ html, body, [class*="css"] {{ font-family: 'Inter', sans-serif; }}
 [data-testid="stSidebar"] {{
     background: linear-gradient(180deg, {ROBERTET_DARK} 0%, {ROBERTET_GREEN} 100%);
 }}
-[data-testid="stSidebar"] * {{ color: #F0F4F1 !important; }}
-[data-testid="stSidebar"] hr {{ border-color: rgba(255,255,255,0.2); }}
-[data-testid="stSidebar"] .stSlider [data-baseweb="slider"] div {{
-    background-color: rgba(255,255,255,0.9);
+
+/* Solo etiquetas y textos sueltos en blanco (no los widgets) */
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3, [data-testid="stSidebar"] .stMarkdown {{
+    color: #F0F4F1 !important;
+}}
+[data-testid="stSidebar"] hr {{ border-color: rgba(255,255,255,0.25); }}
+
+/* Cajas de selectbox: fondo oscuro translúcido + texto blanco */
+[data-testid="stSidebar"] [data-baseweb="select"] > div {{
+    background-color: rgba(255,255,255,0.12) !important;
+    border-color: rgba(255,255,255,0.35) !important;
+}}
+[data-testid="stSidebar"] [data-baseweb="select"] * {{
+    color: #FFFFFF !important;
+}}
+[data-testid="stSidebar"] [data-baseweb="select"] svg {{
+    fill: #FFFFFF !important;
+}}
+
+/* Radio buttons y checkbox: texto blanco */
+[data-testid="stSidebar"] .stRadio label,
+[data-testid="stSidebar"] .stCheckbox label {{
+    color: #F0F4F1 !important;
+}}
+
+/* Sliders: valores y barra legibles */
+[data-testid="stSidebar"] .stSlider [data-testid="stTickBarMin"],
+[data-testid="stSidebar"] .stSlider [data-testid="stTickBarMax"],
+[data-testid="stSidebar"] .stSlider [data-testid="stThumbValue"] {{
+    color: #FFFFFF !important;
+}}
+
+/* MENUS DESPLEGABLES ABIERTOS (se dibujan fuera del sidebar, fondo blanco):
+   forzar texto oscuro para que sean legibles */
+[data-baseweb="popover"] [role="listbox"] li,
+[data-baseweb="popover"] [role="option"] {{
+    color: #1A1A1A !important;
+    background-color: #FFFFFF !important;
+}}
+[data-baseweb="popover"] [role="option"]:hover,
+[data-baseweb="popover"] [aria-selected="true"] {{
+    background-color: #EEF2EF !important;
+    color: #0E3B25 !important;
 }}
 
 /* ---------- Tabs tipo pill ---------- */
