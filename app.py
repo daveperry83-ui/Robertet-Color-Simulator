@@ -15,6 +15,8 @@ Modelo de pérdida física — dos fenómenos separados, antes confundidos en un
 Un carotenoide en el baño no pierde color por lavado: nunca se depositó.
 """
 
+import os
+import base64
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -22,8 +24,171 @@ import colorsys
 import plotly.graph_objects as go
 import matplotlib.colors as mcolors
 
-st.set_page_config(page_title="Robertet R&D Color Intelligence", layout="wide")
-LOGO = "https://www.robertet.com/wp-content/uploads/2021/03/Logo-Robertet-1.png"
+st.set_page_config(page_title="Robertet R&D Color Intelligence", layout="wide",
+                   page_icon="🔬", initial_sidebar_state="expanded")
+
+# ==========================================================================
+# IDENTIDAD VISUAL
+# ==========================================================================
+THEME = dict(
+    navy="#0E2439", navy2="#16324B", navy3="#22415E",
+    gold="#C1974A", gold_soft="#E4D3AE",
+    paper="#FAFAF8", card="#FFFFFF", ink="#161A1F",
+    muted="#6B7480", rule="#E3E1DC",
+    ok="#2E7D52", warn="#B67514", bad="#A32B2B",
+)
+
+# Wordmark de respaldo. Se usa solo si no hay archivo de logo en el repo:
+# coloca assets/robertet-logo.png (o .svg) y se toma ese automaticamente.
+LOGO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 74">
+<text x="160" y="34" text-anchor="middle" font-family="Georgia,'Times New Roman',serif"
+      font-size="28" letter-spacing="7" fill="{fg}">ROBERTET</text>
+<line x1="52" y1="46" x2="268" y2="46" stroke="{accent}" stroke-width="1"/>
+<text x="160" y="63" text-anchor="middle" font-family="Helvetica,Arial,sans-serif"
+      font-size="9.5" letter-spacing="3.4" fill="{sub}">R&amp;D COLOUR INTELLIGENCE</text>
+</svg>"""
+
+
+def logo_html(width=210, fg="#FFFFFF", accent=None, sub=None):
+    """Logo del repo si existe; si no, wordmark vectorial embebido."""
+    accent = accent or THEME["gold"]
+    sub = sub or THEME["gold_soft"]
+    for path in ("assets/robertet-logo.png", "assets/robertet-logo.svg",
+                 "assets/logo.png", "robertet-logo.png"):
+        if os.path.exists(path):
+            mime = "image/svg+xml" if path.endswith(".svg") else "image/png"
+            with open(path, "rb") as fh:
+                b64 = base64.b64encode(fh.read()).decode()
+            return f'<img src="data:{mime};base64,{b64}" style="width:{width}px">'
+    svg = LOGO_SVG.format(fg=fg, accent=accent, sub=sub)
+    b64 = base64.b64encode(svg.encode()).decode()
+    return f'<img src="data:image/svg+xml;base64,{b64}" style="width:{width}px">'
+
+
+CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap');
+
+.stApp { background: %(paper)s; }
+html, body, [class*="css"] { font-family: 'Inter', -apple-system, sans-serif; }
+
+/* ---------- sidebar ---------- */
+[data-testid="stSidebar"] { background: %(navy)s; border-right: 1px solid %(navy3)s; }
+[data-testid="stSidebar"] * { color: #E8EDF2; }
+[data-testid="stSidebar"] h3 {
+  font-size: 12px !important; font-weight: 700; letter-spacing: .13em;
+  text-transform: uppercase; color: %(gold)s !important;
+  margin: 4px 0 6px; padding-bottom: 5px; border-bottom: 1px solid %(navy3)s;
+}
+[data-testid="stSidebar"] hr { border-color: %(navy3)s; margin: 14px 0 6px; }
+[data-testid="stSidebar"] label, [data-testid="stSidebar"] .stCaption,
+[data-testid="stSidebar"] small { font-size: 12px !important; color: #AFC0D0 !important; }
+[data-testid="stSidebar"] [data-baseweb="select"] > div,
+[data-testid="stSidebar"] input {
+  background: %(navy2)s !important; border-color: %(navy3)s !important;
+  color: #F2F5F8 !important; font-size: 13px !important;
+}
+
+/* ---------- cabecera ---------- */
+.rb-head {
+  background: linear-gradient(100deg, %(navy)s 0%%, %(navy2)s 62%%, %(navy3)s 100%%);
+  border-radius: 12px; padding: 20px 26px; margin-bottom: 18px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 20px; flex-wrap: wrap;
+}
+.rb-head h1 {
+  color: #fff; font-size: 21px; font-weight: 600; margin: 0; letter-spacing: -.01em;
+}
+.rb-head .sub {
+  color: %(gold_soft)s; font-size: 12px; letter-spacing: .09em;
+  text-transform: uppercase; margin-top: 4px;
+}
+.rb-chip {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: %(gold)s;
+  border: 1px solid rgba(193,151,74,.45); border-radius: 30px; padding: 5px 13px;
+  white-space: nowrap;
+}
+
+/* ---------- tarjetas KPI ---------- */
+.rb-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 760px) { .rb-kpis { grid-template-columns: 1fr; } }
+.rb-kpi {
+  background: %(card)s; border: 1px solid %(rule)s; border-top: 3px solid %(rule)s;
+  border-radius: 10px; padding: 14px 16px;
+}
+.rb-kpi.hero { border-top-color: %(gold)s; }
+.rb-kpi .lab {
+  font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase;
+  color: %(muted)s; font-weight: 600;
+}
+.rb-kpi .val {
+  font-size: 31px; font-weight: 700; color: %(ink)s; line-height: 1.15; margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.rb-kpi .hint { font-size: 11.5px; color: %(muted)s; margin-top: 2px; }
+
+/* ---------- barra de formulacion ---------- */
+.rb-band {
+  height: 46px; border-radius: 9px; display: flex; align-items: center;
+  justify-content: center; color: #fff; font-weight: 600; letter-spacing: .04em;
+  text-shadow: 0 1px 3px rgba(0,0,0,.35); margin-bottom: 12px;
+  border: 1px solid rgba(0,0,0,.08);
+}
+
+/* ---------- muestras de color ---------- */
+.rb-sw { text-align: center; }
+.rb-sw .chip {
+  height: 84px; border-radius: 9px; border: 1px solid %(rule)s;
+  box-shadow: inset 0 1px 4px rgba(0,0,0,.10);
+}
+.rb-sw .name { font-size: 12px; font-weight: 600; margin-top: 7px; color: %(ink)s; }
+.rb-sw .meta {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: %(muted)s;
+}
+
+/* ---------- tabs ---------- */
+.stTabs [data-baseweb="tab-list"] { gap: 4px; border-bottom: 1px solid %(rule)s; }
+.stTabs [data-baseweb="tab"] {
+  font-size: 13.5px; font-weight: 600; color: %(muted)s;
+  padding: 9px 16px; border-radius: 8px 8px 0 0;
+}
+.stTabs [aria-selected="true"] { color: %(navy)s !important; background: %(card)s; }
+.stTabs [data-baseweb="tab-highlight"] { background: %(gold)s; }
+
+/* ---------- tablas y varios ---------- */
+[data-testid="stDataFrame"] { border: 1px solid %(rule)s; border-radius: 9px; }
+h2, h3 { color: %(navy)s; font-weight: 600; letter-spacing: -.01em; }
+.block-container { padding-top: 2.2rem; max-width: 1350px; }
+#MainMenu, footer { visibility: hidden; }
+</style>
+""" % THEME
+
+
+def kpi(label, value, hint="", hero=False):
+    return (f'<div class="rb-kpi{" hero" if hero else ""}">'
+            f'<div class="lab">{label}</div><div class="val">{value}</div>'
+            f'<div class="hint">{hint}</div></div>')
+
+
+def plot_layout(fig, height=430, xtitle="", ytitle="%"):
+    fig.update_layout(
+        height=height, margin=dict(l=8, r=80, t=26, b=8),
+        hovermode="x unified", plot_bgcolor="white", paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Inter, sans-serif", size=12, color=THEME["ink"]),
+        hoverlabel=dict(bgcolor="white", bordercolor=THEME["rule"],
+                        font=dict(family="Inter, sans-serif", size=12)),
+        xaxis=dict(title=xtitle, showspikes=True, spikemode="across", spikethickness=1,
+                   spikecolor=THEME["muted"], gridcolor="#F0EFEC",
+                   linecolor=THEME["rule"], zeroline=False),
+        yaxis=dict(title=ytitle, range=[-2, 105], gridcolor="#F0EFEC",
+                   linecolor=THEME["rule"], zeroline=False),
+        legend=dict(orientation="h", y=1.14, x=0, bgcolor="rgba(0,0,0,0)",
+                    font=dict(size=11.5)))
+    return fig
+
+
+st.markdown(CSS, unsafe_allow_html=True)
+
 
 # ==========================================================================
 # ACCESO
@@ -32,10 +197,16 @@ if "acceso_concedido" not in st.session_state:
     st.session_state.acceso_concedido = False
 
 if not st.session_state.acceso_concedido:
-    _, c, _ = st.columns([1, 2, 1])
+    _, c, _ = st.columns([1, 1.5, 1])
     with c:
-        st.image(LOGO, width=300)
-        st.markdown("### 🔒 R&D Portal — Latin America")
+        st.markdown(
+            f'<div style="background:{THEME["navy"]};border-radius:14px;'
+            f'padding:36px 30px 30px;text-align:center;margin-top:44px">'
+            f'{logo_html(240)}'
+            f'<div style="color:{THEME["gold_soft"]};font-size:11px;letter-spacing:.16em;'
+            f'margin-top:20px">R&D PORTAL &middot; LATIN AMERICA</div></div>',
+            unsafe_allow_html=True)
+        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
         clave = st.text_input("PIN de Acceso / Access PIN:", type="password")
         if st.button("Unlock Simulator"):
             if clave == "LatAm2026":
@@ -347,11 +518,8 @@ def on_substrate(hex_color, delivered_pct, substrate=SUBSTRATE):
 
 
 def swatch(hex_color, label, sub=""):
-    return (f'<div style="text-align:center">'
-            f'<div style="background:{hex_color};height:86px;border-radius:10px;'
-            f'border:1px solid #ccc"></div>'
-            f'<div style="font-size:12px;margin-top:6px"><b>{label}</b></div>'
-            f'<div style="font-size:11px;color:#777">{sub}</div></div>')
+    return (f'<div class="rb-sw"><div class="chip" style="background:{hex_color}"></div>'
+            f'<div class="name">{label}</div><div class="meta">{sub}</div></div>')
 
 
 
@@ -386,7 +554,8 @@ def blend_result(components, stages, ph, ax, ca_pct, ca_on, dosing, cook_loss):
 # ==========================================================================
 # BARRA LATERAL
 # ==========================================================================
-st.sidebar.image(LOGO, width=180)
+st.sidebar.markdown(f'<div style="padding:2px 0 14px">{logo_html(190)}</div>',
+                    unsafe_allow_html=True)
 pig_list = list(PIGMENTS.keys())
 
 # ---------------------------------------------------------------- formulación
@@ -489,7 +658,13 @@ B = blend_result(components, stages, ph_val, antiox, ca_pct, ca_on, dosing, cook
 # ==========================================================================
 # DASHBOARD
 # ==========================================================================
-st.title("🔬 " + t("Inteligencia de Color R&D — Robertet", "R&D Colour Intelligence — Robertet"))
+st.markdown(
+    f'<div class="rb-head"><div style="display:flex;align-items:center;gap:22px">'
+    f'{logo_html(170)}'
+    f'<div><h1>{t("Inteligencia de Color", "Colour Intelligence")}</h1>'
+    f'<div class="sub">{t("Simulador de proceso y anaquel", "Process &amp; shelf life simulator")}</div>'
+    f'</div></div>'
+    f'<div class="rb-chip">{preset}</div></div>', unsafe_allow_html=True)
 
 if B is None:
     st.warning(t("No hay componentes activos. Enciende al menos uno en la barra lateral.",
@@ -508,18 +683,17 @@ with tab_p:
 
     title = (B["parts"][0][0] if B["single"]
              else t("Mezcla de ", "Blend of ") + f"{len(B['parts'])}")
+    st.markdown(f'<div class="rb-band" style="background:{B["hex"]}">{title}</div>',
+                unsafe_allow_html=True)
     st.markdown(
-        f'<div style="background:{B["hex"]};opacity:{max(.12, B["delivered"]/100)};'
-        f'height:52px;border-radius:8px;display:flex;align-items:center;'
-        f'justify-content:center;color:#fff;font-weight:700;">{title}</div>',
-        unsafe_allow_html=True)
-    k1, k2, k3 = st.columns(3)
-    k1.metric(t("Retención química", "Chemical retention"), f"{B['chem']:.1f}%",
-              help=t("Sobrevive la molécula", "Molecule survives"))
-    k2.metric(t("Retención física", "Physical retention"), f"{B['phys']:.1f}%",
-              help=t("Se queda en el producto", "Stays on the product"))
-    k3.metric(t("COLOR ENTREGADO", "DELIVERED COLOUR"), f"{B['delivered']:.1f}%",
-              help=t("Lo que ve el consumidor", "What the consumer sees"))
+        '<div class="rb-kpis">'
+        + kpi(t("Retención química", "Chemical retention"), f"{B['chem']:.1f}%",
+              t("Sobrevive la molécula", "Molecule survives"))
+        + kpi(t("Retención física", "Physical retention"), f"{B['phys']:.1f}%",
+              t("Se queda en el producto", "Stays on the product"))
+        + kpi(t("Color entregado", "Delivered colour"), f"{B['delivered']:.1f}%",
+              t("Lo que ve el consumidor", "What the consumer sees"), hero=True)
+        + '</div><div style="height:16px"></div>', unsafe_allow_html=True)
 
     fig = go.Figure()
     for start, end, label, tc, wet in B["bounds"]:
@@ -546,14 +720,8 @@ with tab_p:
     fig.add_hline(y=B["delivered"], line=dict(color=B["hex"], width=1.8, dash="dot"),
                   annotation_text=t("entregado ", "delivered ") + f"{B['delivered']:.0f}%",
                   annotation_position="right", annotation_font_size=10)
-    fig.update_layout(height=430, margin=dict(l=10, r=80, t=30, b=10),
-                      hovermode="x unified", plot_bgcolor="white",
-                      xaxis=dict(title=t("Tiempo (min)", "Time (min)"), showspikes=True,
-                                 spikemode="across", spikethickness=1,
-                                 spikecolor="#999", gridcolor="#EEE"),
-                      yaxis=dict(title="%", range=[-2, 105], gridcolor="#EEE"),
-                      legend=dict(orientation="h", y=1.14, x=0))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(plot_layout(fig, 430, t("Tiempo (min)", "Time (min)")),
+                    use_container_width=True)
 
     c1, c2 = st.columns([1.5, 1])
     with c1:
@@ -626,13 +794,17 @@ with tab_s:
                       " %{x:.1f}<br><b>%{y:.1f}%</b><extra></extra>"))
     fig2.add_hline(y=70, line=dict(color="#888", dash="dot"),
                    annotation_text=t("Umbral aceptable", "Acceptable threshold"))
-    fig2.update_layout(height=390, plot_bgcolor="white", hovermode="x unified",
-                       margin=dict(l=10, r=40, t=30, b=10),
-                       xaxis=dict(title=t("Meses", "Months"), gridcolor="#EEE"),
-                       yaxis=dict(title="%", range=[-2, 105], gridcolor="#EEE"),
-                       legend=dict(orientation="h", y=1.14, x=0))
-    st.plotly_chart(fig2, use_container_width=True)
-    st.metric(t("Al final del anaquel", "At end of shelf life"), f"{blend_shelf[-1]:.1f}%")
+    st.plotly_chart(plot_layout(fig2, 390, t("Meses", "Months")), use_container_width=True)
+    st.markdown('<div class="rb-kpis">'
+                + kpi(t("Al final del anaquel", "At end of shelf life"),
+                      f"{blend_shelf[-1]:.1f}%",
+                      t(f"a {months} meses", f"at {months} months"), hero=True)
+                + kpi(t("Al salir de proceso", "Leaving the process"),
+                      f"{B['delivered']:.1f}%", t("punto de partida", "starting point"))
+                + kpi(t("Pérdida en anaquel", "Shelf life loss"),
+                      f"{B['delivered'] - blend_shelf[-1]:.1f} pts",
+                      t("luz y temperatura", "light and temperature"))
+                + '</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------- formulación
 with tab_b:
@@ -731,10 +903,19 @@ with tab_r:
         ranked.sort(reverse=True)
         st.markdown("### 🏆 Ranking")
         for _, name, dE, dv in ranked[:5]:
-            st.markdown(f"<span style='color:{PIGMENTS[name]['hue']};font-size:18px'>"
-                        f"{'█' * max(1, int(dv / 10))}</span> **{name}** — "
-                        f"ΔE₀₀ {dE:.0f} · {t('entrega','delivery')} {dv:.0f}%",
-                        unsafe_allow_html=True)
+            st.markdown(
+                f'<div style="display:flex;align-items:center;gap:12px;padding:7px 0;'
+                f'border-bottom:1px solid {THEME["rule"]}">'
+                f'<div style="width:15px;height:15px;border-radius:4px;flex:0 0 auto;'
+                f'background:{PIGMENTS[name]["hue"]};border:1px solid rgba(0,0,0,.12)"></div>'
+                f'<div style="flex:1;min-width:0"><div style="font-size:13px;'
+                f'font-weight:600;color:{THEME["ink"]}">{name}</div>'
+                f'<div style="height:5px;border-radius:3px;margin-top:4px;'
+                f'background:{THEME["rule"]}"><div style="height:5px;border-radius:3px;'
+                f'width:{min(dv,100):.0f}%;background:{PIGMENTS[name]["hue"]}"></div></div></div>'
+                f'<div style="font-family:IBM Plex Mono,monospace;font-size:11px;'
+                f'color:{THEME["muted"]};text-align:right;flex:0 0 auto">'
+                f'ΔE₀₀ {dE:.0f}<br>{dv:.0f}%</div></div>', unsafe_allow_html=True)
         if ranked[0][3] < 25:
             st.error(t("❌ Ningún pigmento entrega suficiente con esta dosificación.",
                        "❌ No pigment delivers enough with this dosing."))
@@ -744,4 +925,11 @@ with tab_r:
         else:
             st.success(f"✅ **{ranked[0][1]}** — " + t("candidato principal", "lead candidate"))
 
-st.caption("Confidential Robertet R&D — Regional Division.")
+st.markdown(
+    f'<div style="margin-top:26px;padding-top:14px;border-top:1px solid {THEME["rule"]};'
+    f'display:flex;justify-content:space-between;font-size:11px;color:{THEME["muted"]};'
+    f'letter-spacing:.06em;flex-wrap:wrap;gap:8px">'
+    f'<span>CONFIDENTIAL &middot; ROBERTET R&amp;D &mdash; REGIONAL DIVISION</span>'
+    f'<span>{t("Modelo de simulación — no sustituye validación de laboratorio",
+               "Simulation model — does not replace laboratory validation")}</span></div>',
+    unsafe_allow_html=True)
