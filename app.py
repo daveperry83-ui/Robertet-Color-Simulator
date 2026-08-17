@@ -354,37 +354,85 @@ def swatch(hex_color, label, sub=""):
             f'<div style="font-size:11px;color:#777">{sub}</div></div>')
 
 
+
+# ==========================================================================
+# MEZCLA — la formulación es el objeto principal, no un pigmento suelto
+# ==========================================================================
+def blend_result(components, stages, ph, ax, ca_pct, ca_on, dosing, cook_loss):
+    """
+    components: lista de (nombre, participación 0-1) ya normalizada.
+    Una sola componente al 100% es un 'single'; la matemática es la misma.
+    """
+    if not components:
+        return None
+    parts, ys, chem, delivered = [], None, 0.0, 0.0
+    rgb, weight = np.zeros(3), 0.0
+    for name, share in components:
+        R = full_result(name, stages, ph, ax, ca_pct, ca_on, dosing, cook_loss)
+        parts.append((name, share, R))
+        ys = share * R["ys"] if ys is None else ys + share * R["ys"]
+        chem += share * R["chem"]
+        delivered += share * R["delivered"]
+        eff = share * R["delivered"] / 100.0
+        rgb += np.array(mcolors.to_rgb(PIGMENTS[name]["hue"])) * eff
+        weight += eff
+    hexm = mcolors.to_hex(np.clip(rgb / weight, 0, 1)) if weight > 0 else "#999999"
+    phys = (delivered / chem * 100.0) if chem > 0 else 0.0
+    return dict(parts=parts, ts=parts[0][2]["ts"], ys=ys, bounds=parts[0][2]["bounds"],
+                chem=chem, phys=phys, delivered=delivered, hex=hexm,
+                ca=parts[0][2]["ca"], single=(len(parts) == 1))
+
+
 # ==========================================================================
 # BARRA LATERAL
 # ==========================================================================
 st.sidebar.image(LOGO, width=180)
 pig_list = list(PIGMENTS.keys())
 
-st.sidebar.markdown("### " + t("Muestra", "Sample"))
-p1 = st.sidebar.selectbox(t("Pigmento", "Pigment") + " (A)", pig_list,
-                          index=pig_list.index("Paprika (WD)"))
-compare_on = st.sidebar.checkbox(t("Modo comparativo", "Comparison mode"))
-p2 = st.sidebar.selectbox(t("Pigmento", "Pigment") + " (B)", pig_list,
-                          index=pig_list.index("Lycopene")) if compare_on else None
+# ---------------------------------------------------------------- formulación
+st.sidebar.markdown("### 🧪 " + t("Formulación", "Formulation"))
+st.sidebar.caption(t("Hasta 5 componentes. Apaga los que no uses — con uno solo activo "
+                     "es un pigmento único.",
+                     "Up to 5 components. Switch off what you don't use — with a single "
+                     "one active it is a straight pigment."))
+
+DEFAULTS = ["Lycopene", "Paprika (WD)", "Caramel colour",
+            "Bixin (annatto oil)", "β-apo-8'-carotenal"]
+DEF_ON = [True, True, True, False, False]
+DEF_DOSE = [60, 20, 15, 5, 10]
+
+raw_components = []
+for i in range(5):
+    with st.sidebar.container():
+        c_tg, c_ds = st.sidebar.columns([1, 1])
+        on = c_tg.toggle(f"#{i+1}", value=DEF_ON[i], key=f"tg_{i}")
+        dose = c_ds.number_input("%", 0, 100, DEF_DOSE[i], 5,
+                                 key=f"bd_{i}", disabled=not on,
+                                 label_visibility="collapsed")
+        pig = st.sidebar.selectbox(f"{t('Componente','Component')} {i+1}", pig_list,
+                                   index=pig_list.index(DEFAULTS[i]),
+                                   key=f"bp_{i}", label_visibility="collapsed",
+                                   disabled=not on)
+    if on and dose > 0:
+        raw_components.append((pig, dose))
+
+tot_dose = sum(d for _, d in raw_components)
+components = [(n, d / tot_dose) for n, d in raw_components] if tot_dose else []
+if len(components) > 1:
+    st.sidebar.caption(t(f"Normalizado sobre {tot_dose}%.", f"Normalised over {tot_dose}%."))
 
 # ---------------------------------------------------------------- proceso
 st.sidebar.markdown("--- \n### ⚙️ " + t("Proceso", "Process"))
 preset = st.sidebar.selectbox(t("Preset", "Preset"), list(PRESETS.keys()))
-
-st.sidebar.caption(t("Etapas activables. Editable abajo.", "Toggleable stages. Editable below."))
+st.sidebar.caption(t("Etapas activables.", "Toggleable stages."))
 raw_stages = PRESETS[preset]
-active_flags = []
-for i, (label, tc, mn, o2, wet, agit) in enumerate(raw_stages):
-    active_flags.append(st.sidebar.checkbox(f"{label} · {tc}°C · {mn}min",
-                                            value=True, key=f"stg_{preset}_{i}"))
+active_flags = [st.sidebar.checkbox(f"{s[0]} · {s[1]}°C · {s[2]}min", value=True,
+                                    key=f"stg_{preset}_{i}")
+                for i, s in enumerate(raw_stages)]
 
-# Nombres de columna ASCII y sin colisiones con metodos de tupla,
-# para poder leerlos de forma segura sin depender de itertuples().
 COLS = ["Etapa", "TempC", "Minutos", "O2", "Humeda", "Agitacion"]
-
-df = pd.DataFrame(
-    [dict(zip(COLS, s)) for s, a in zip(raw_stages, active_flags) if a],
-    columns=COLS)
+df = pd.DataFrame([dict(zip(COLS, s)) for s, a in zip(raw_stages, active_flags) if a],
+                  columns=COLS)
 
 with st.sidebar.expander(t("Editar etapas", "Edit stages")):
     if df.empty:
@@ -400,13 +448,11 @@ for row in df.to_dict("records"):
         if any(np.isnan(v) for v in vals):
             raise ValueError("NaN")
         tc, mn, o2, agit = vals
-        stages.append((str(row["Etapa"]), tc, max(mn, 0.0),
-                       max(o2, 0.0), bool(row["Humeda"]),
-                       min(max(agit, 0.0), 1.0)))
+        stages.append((str(row["Etapa"]), tc, max(mn, 0.0), max(o2, 0.0),
+                       bool(row["Humeda"]), min(max(agit, 0.0), 1.0)))
     except (TypeError, ValueError):
-        st.sidebar.warning(
-            t(f"Etapa '{row.get('Etapa', '?')}' tiene un valor invalido y fue omitida.",
-              f"Stage '{row.get('Etapa', '?')}' has an invalid value and was skipped."))
+        st.sidebar.warning(t(f"Etapa '{row.get('Etapa','?')}' invalida, omitida.",
+                             f"Stage '{row.get('Etapa','?')}' invalid, skipped."))
 
 if not stages:
     st.sidebar.error(t("Sin etapas activas.", "No active stages."))
@@ -414,23 +460,18 @@ if not stages:
 
 # ---------------------------------------------------------------- dosificación
 st.sidebar.markdown("--- \n### 🎯 " + t("Dosificación", "Dosing"))
-st.sidebar.caption(t("Se pueden activar varios puntos a la vez, o ninguno.",
-                     "Several points can be active at once, or none."))
+st.sidebar.caption(t("Varios puntos a la vez, o ninguno.", "Several points at once, or none."))
 dosing_raw = {}
 for key, ap in APP_POINTS.items():
-    on = st.sidebar.checkbox(ap["es"] if ES else ap["en"],
-                             value=(key == "meat"), key=f"ap_{key}")
+    on = st.sidebar.checkbox(ap["es"] if ES else ap["en"], value=(key == "meat"), key=f"ap_{key}")
     if on:
-        dosing_raw[key] = st.sidebar.slider(
-            "→ % " + t("de la dosis", "of dose"), 0, 100, 100, 5, key=f"sh_{key}")
-
+        dosing_raw[key] = st.sidebar.slider("→ % " + t("de la dosis", "of dose"),
+                                            0, 100, 100, 5, key=f"sh_{key}")
 tot = sum(dosing_raw.values())
 dosing = {k: v / tot for k, v in dosing_raw.items()} if tot > 0 else {}
-if tot > 0 and len(dosing_raw) > 1:
-    st.sidebar.caption(t(f"Normalizado sobre {tot}%.", f"Normalised over {tot}%."))
 
 # ---------------------------------------------------------------- condiciones
-st.sidebar.markdown("--- \n### 🧪 " + t("Condiciones", "Conditions"))
+st.sidebar.markdown("--- \n### 🔬 " + t("Condiciones", "Conditions"))
 ca_on = st.sidebar.checkbox(t("Baño de fijado con calcio", "Calcium setting bath"), value=True)
 ca_pct = st.sidebar.slider("CaCl₂ %", 0.0, 3.0, 1.0, 0.1, disabled=not ca_on)
 ph_val = st.sidebar.slider("pH", 2.0, 10.0, 5.8, 0.1)
@@ -443,213 +484,193 @@ uv_opts = t(["Transparente", "Semi-opaco", "Opaco / sin UV"], ["Clear", "Semi-op
 uv_idx = uv_opts.index(st.sidebar.selectbox(t("Empaque", "Packaging"), uv_opts, index=1))
 months = st.sidebar.slider(t("Meses", "Months"), 1, 24, 6)
 
-R1 = full_result(p1, stages, ph_val, antiox, ca_pct, ca_on, dosing, cook_loss)
-R2 = full_result(p2, stages, ph_val, antiox, ca_pct, ca_on, dosing, cook_loss) if compare_on else None
-
-# ==========================================================================
-# GRÁFICA INTERACTIVA
-# ==========================================================================
-def process_figure(results):
-    fig = go.Figure()
-    for i, (start, end, label, tc, wet) in enumerate(results[0][1]["bounds"]):
-        fig.add_vrect(
-            x0=start, x1=end,
-            fillcolor="#4A90D9" if wet else "#E8A33D",
-            opacity=0.09, layer="below", line_width=0,
-            annotation_text=f"{label}<br>{tc:.0f}°C", annotation_position="top left",
-            annotation_font_size=9, annotation_font_color="#666")
-    for name, R, dash in results:
-        p = PIGMENTS[name]
-        fig.add_trace(go.Scatter(
-            x=R["ts"], y=R["ys"], mode="lines", name=name,
-            line=dict(color=p["hue"], width=3.4, dash=dash),
-            hovertemplate="<b>%{fullData.name}</b><br>" +
-                          t("Minuto", "Minute") + " %{x:.1f}<br>" +
-                          t("Retención química", "Chemical retention") +
-                          " <b>%{y:.1f}%</b><extra></extra>"))
-        fig.add_hline(y=R["delivered"], line=dict(color=p["hue"], width=1.6, dash="dot"),
-                      annotation_text=t("entregado ", "delivered ") + f"{R['delivered']:.0f}%",
-                      annotation_position="right", annotation_font_size=10,
-                      annotation_font_color=p["hue"])
-    fig.update_layout(
-        height=420, margin=dict(l=10, r=70, t=30, b=10),
-        hovermode="x unified", plot_bgcolor="white",
-        xaxis=dict(title=t("Tiempo (min)", "Time (min)"), showspikes=True,
-                   spikemode="across", spikethickness=1, spikecolor="#999",
-                   gridcolor="#EEE"),
-        yaxis=dict(title="%", range=[-2, 105], gridcolor="#EEE"),
-        legend=dict(orientation="h", y=1.12, x=0))
-    return fig
-
+B = blend_result(components, stages, ph_val, antiox, ca_pct, ca_on, dosing, cook_loss)
 
 # ==========================================================================
 # DASHBOARD
 # ==========================================================================
 st.title("🔬 " + t("Inteligencia de Color R&D — Robertet", "R&D Colour Intelligence — Robertet"))
+
+if B is None:
+    st.warning(t("No hay componentes activos. Enciende al menos uno en la barra lateral.",
+                 "No active components. Switch on at least one in the sidebar."))
+    st.stop()
+
 tab_p, tab_s, tab_b, tab_r = st.tabs([
     t("🔥 Proceso", "🔥 Process"), t("📅 Anaquel", "📅 Shelf life"),
-    t("🧪 Mezclas", "🧪 Blends"), t("💡 Recomendador", "💡 Recommender")])
+    t("🧪 Formulación", "🧪 Formulation"), t("💡 Recomendador", "💡 Recommender")])
 
+# ---------------------------------------------------------------- proceso
 with tab_p:
     if not dosing:
         st.warning(t("Ningún punto de dosificación activo — no hay color en el producto.",
                      "No dosing point active — there is no colour on the product."))
 
-    def kpis(name, R, label):
-        st.markdown(
-            f'<div style="background:{PIGMENTS[name]["hue"]};opacity:{max(.12, R["delivered"]/100)};'
-            f'height:52px;border-radius:8px;display:flex;align-items:center;justify-content:center;'
-            f'color:#fff;font-weight:700;">{label}: {name}</div>', unsafe_allow_html=True)
-        k1, k2, k3 = st.columns(3)
-        k1.metric(t("Retención química", "Chemical retention"), f"{R['chem']:.1f}%",
-                  help=t("Sobrevive la molécula", "Molecule survives"))
-        k2.metric(t("Retención física", "Physical retention"), f"{R['phys']:.1f}%",
-                  help=t("Se queda en el producto", "Stays on the product"))
-        k3.metric(t("COLOR ENTREGADO", "DELIVERED COLOUR"), f"{R['delivered']:.1f}%",
-                  help=t("Lo que ve el consumidor", "What the consumer sees"))
+    title = (B["parts"][0][0] if B["single"]
+             else t("Mezcla de ", "Blend of ") + f"{len(B['parts'])}")
+    st.markdown(
+        f'<div style="background:{B["hex"]};opacity:{max(.12, B["delivered"]/100)};'
+        f'height:52px;border-radius:8px;display:flex;align-items:center;'
+        f'justify-content:center;color:#fff;font-weight:700;">{title}</div>',
+        unsafe_allow_html=True)
+    k1, k2, k3 = st.columns(3)
+    k1.metric(t("Retención química", "Chemical retention"), f"{B['chem']:.1f}%",
+              help=t("Sobrevive la molécula", "Molecule survives"))
+    k2.metric(t("Retención física", "Physical retention"), f"{B['phys']:.1f}%",
+              help=t("Se queda en el producto", "Stays on the product"))
+    k3.metric(t("COLOR ENTREGADO", "DELIVERED COLOUR"), f"{B['delivered']:.1f}%",
+              help=t("Lo que ve el consumidor", "What the consumer sees"))
 
-    kpis(p1, R1, "A")
-    if compare_on:
-        st.markdown("")
-        kpis(p2, R2, "B")
+    fig = go.Figure()
+    for start, end, label, tc, wet in B["bounds"]:
+        fig.add_vrect(x0=start, x1=end,
+                      fillcolor="#4A90D9" if wet else "#E8A33D",
+                      opacity=0.09, layer="below", line_width=0,
+                      annotation_text=f"{label}<br>{tc:.0f}°C",
+                      annotation_position="top left",
+                      annotation_font_size=9, annotation_font_color="#666")
+    if not B["single"]:
+        for name, share, R in B["parts"]:
+            fig.add_trace(go.Scatter(
+                x=R["ts"], y=R["ys"], mode="lines",
+                name=f"{name} ({share*100:.0f}%)",
+                line=dict(color=PIGMENTS[name]["hue"], width=1.8, dash="dot"),
+                hovertemplate="<b>%{fullData.name}</b><br>%{y:.1f}%<extra></extra>"))
+    fig.add_trace(go.Scatter(
+        x=B["ts"], y=B["ys"], mode="lines",
+        name=t("Formulación", "Formulation") if not B["single"] else B["parts"][0][0],
+        line=dict(color=B["hex"], width=4),
+        hovertemplate="<b>%{fullData.name}</b><br>" + t("Minuto", "Minute") +
+                      " %{x:.1f}<br>" + t("Retención química", "Chemical retention") +
+                      " <b>%{y:.1f}%</b><extra></extra>"))
+    fig.add_hline(y=B["delivered"], line=dict(color=B["hex"], width=1.8, dash="dot"),
+                  annotation_text=t("entregado ", "delivered ") + f"{B['delivered']:.0f}%",
+                  annotation_position="right", annotation_font_size=10)
+    fig.update_layout(height=430, margin=dict(l=10, r=80, t=30, b=10),
+                      hovermode="x unified", plot_bgcolor="white",
+                      xaxis=dict(title=t("Tiempo (min)", "Time (min)"), showspikes=True,
+                                 spikemode="across", spikethickness=1,
+                                 spikecolor="#999", gridcolor="#EEE"),
+                      yaxis=dict(title="%", range=[-2, 105], gridcolor="#EEE"),
+                      legend=dict(orientation="h", y=1.14, x=0))
+    st.plotly_chart(fig, use_container_width=True)
 
-    results = [(p1, R1, "solid")] + ([(p2, R2, "dash")] if compare_on else [])
-    st.plotly_chart(process_figure(results), use_container_width=True)
-
-    c1, c2 = st.columns([1.4, 1])
+    c1, c2 = st.columns([1.5, 1])
     with c1:
-        st.markdown("**" + t("Desglose por punto de dosificación", "Breakdown by dosing point") + "**")
-        if R1["breakdown"]:
+        st.markdown("**" + t("Aporte por componente", "Contribution by component") + "**")
+        st.dataframe(pd.DataFrame([
+            {t("Componente", "Component"): n,
+             t("Dosis", "Dose"): f"{s*100:.0f}%",
+             t("Química", "Chemical"): f"{R['chem']:.0f}%",
+             t("Entregado", "Delivered"): f"{R['delivered']:.0f}%",
+             t("Aporta", "Contributes"): f"{s*R['delivered']:.1f}%"}
+            for n, s, R in B["parts"]]), hide_index=True, use_container_width=True)
+
+        first = B["parts"][0][2]
+        if first["breakdown"]:
+            st.markdown("**" + t("Por punto de dosificación", "By dosing point") + "**")
             st.dataframe(pd.DataFrame([
                 {t("Punto", "Point"): APP_POINTS[k]["es"] if ES else APP_POINTS[k]["en"],
                  t("Dosis", "Dose"): f"{v['share']*100:.0f}%",
                  t("Captación", "Uptake"): f"{v['uptake']*100:.0f}%",
-                 t("Retención", "Retention"): f"{v['retention']*100:.0f}%",
-                 t("Aporta", "Contributes"): f"{v['delivered']:.1f}%"}
-                for k, v in R1["breakdown"].items()]), hide_index=True, use_container_width=True)
-        contact = aqueous_contact(stages, "meat")
-        st.caption(t(f"Contacto acuoso efectivo calculado: {contact:.0f} min-equivalentes. "
-                     "Se deriva de las etapas húmedas activas, su temperatura y agitación.",
-                     f"Computed effective aqueous contact: {contact:.0f} min-equivalents. "
-                     "Derived from the active wet stages, their temperature and agitation."))
+                 t("Retención", "Retention"): f"{v['retention']*100:.0f}%"}
+                for k, v in first["breakdown"].items()]),
+                hide_index=True, use_container_width=True)
+        st.caption(t(f"Contacto acuoso calculado: {aqueous_contact(stages,'meat'):.0f} min-eq.",
+                     f"Computed aqueous contact: {aqueous_contact(stages,'meat'):.0f} min-eq."))
     with c2:
-        gap = R1["chem"] - R1["delivered"]
+        gap = B["chem"] - B["delivered"]
+        worst = min(B["parts"], key=lambda x: x[2]["delivered"])
         if not dosing:
-            st.info(t("Activa al menos un punto de dosificación.", "Enable at least one dosing point."))
+            st.info(t("Activa un punto de dosificación.", "Enable a dosing point."))
         elif gap > 40:
             st.error(t(f"⚠️ {gap:.0f} puntos se pierden **después** de sobrevivir el proceso. "
-                       "El cuello de botella es el punto de aplicación, no la estabilidad térmica.",
-                       f"⚠️ {gap:.0f} points are lost **after** surviving the process. "
-                       "The bottleneck is the application point, not thermal stability."))
-        elif R1["ca"] < 0.9:
-            st.warning(t("⚠️ Pérdida por calcio: riesgo de precipitación y moteado.",
-                         "⚠️ Calcium loss: precipitation and speckling risk."))
+                       "El cuello de botella es el punto de aplicación.",
+                       f"⚠️ {gap:.0f} points lost **after** surviving the process. "
+                       "The bottleneck is the application point."))
+        elif B["ca"] < 0.9:
+            st.warning(t("⚠️ Pérdida por calcio: riesgo de precipitación.",
+                         "⚠️ Calcium loss: precipitation risk."))
         else:
             st.success(t("✅ Sin cuello de botella evidente.", "✅ No obvious bottleneck."))
+        if not B["single"]:
+            st.info(t("Componente limitante: ", "Limiting component: ") +
+                    f"**{worst[0]}** ({worst[2]['delivered']:.0f}%)")
 
     st.caption(t("Captación y retención son estimaciones de ingeniería, no medidas. "
                  "Cuantificarlas es el objeto del Test B del protocolo de Fase 0.",
-                 "Uptake and retention are engineering estimates, not measurements. "
-                 "Quantifying them is the purpose of Test B in the Phase 0 protocol."))
+                 "Uptake and retention are engineering estimates, not measurements."))
 
 # ---------------------------------------------------------------- anaquel
 with tab_s:
     st.subheader("📅 " + t("Estabilidad en anaquel", "Shelf life stability"))
-    st.caption(t("Arranca del color entregado, no del 100%.", "Starts from delivered colour, not 100%."))
+    st.caption(t("Arranca del color entregado, no del 100%.",
+                 "Starts from delivered colour, not 100%."))
     fig2 = go.Figure()
-    for name, R, dash in results:
+    m_ref, blend_shelf = None, None
+    for name, share, R in B["parts"]:
         m, s = shelf_curve(name, months, uv_idx, storage_c, antiox)
         s = s * R["delivered"] / 100.0
-        fig2.add_trace(go.Scatter(
-            x=m, y=s, mode="lines", name=name,
-            line=dict(color=PIGMENTS[name]["hue"], width=3.2, dash=dash),
-            hovertemplate="<b>%{fullData.name}</b><br>" + t("Mes", "Month") +
-                          " %{x:.1f}<br><b>%{y:.1f}%</b><extra></extra>"))
+        m_ref = m
+        blend_shelf = share * s if blend_shelf is None else blend_shelf + share * s
+        if not B["single"]:
+            fig2.add_trace(go.Scatter(
+                x=m, y=s, mode="lines", name=f"{name} ({share*100:.0f}%)",
+                line=dict(color=PIGMENTS[name]["hue"], width=1.8, dash="dot"),
+                hovertemplate="<b>%{fullData.name}</b><br>%{y:.1f}%<extra></extra>"))
+    fig2.add_trace(go.Scatter(
+        x=m_ref, y=blend_shelf, mode="lines",
+        name=t("Formulación", "Formulation") if not B["single"] else B["parts"][0][0],
+        line=dict(color=B["hex"], width=4),
+        hovertemplate="<b>%{fullData.name}</b><br>" + t("Mes", "Month") +
+                      " %{x:.1f}<br><b>%{y:.1f}%</b><extra></extra>"))
     fig2.add_hline(y=70, line=dict(color="#888", dash="dot"),
                    annotation_text=t("Umbral aceptable", "Acceptable threshold"))
-    fig2.update_layout(height=380, plot_bgcolor="white", hovermode="x unified",
+    fig2.update_layout(height=390, plot_bgcolor="white", hovermode="x unified",
                        margin=dict(l=10, r=40, t=30, b=10),
                        xaxis=dict(title=t("Meses", "Months"), gridcolor="#EEE"),
                        yaxis=dict(title="%", range=[-2, 105], gridcolor="#EEE"),
-                       legend=dict(orientation="h", y=1.12, x=0))
+                       legend=dict(orientation="h", y=1.14, x=0))
     st.plotly_chart(fig2, use_container_width=True)
+    st.metric(t("Al final del anaquel", "At end of shelf life"), f"{blend_shelf[-1]:.1f}%")
 
-    if PIGMENTS[p1]["light"] > 0.12 and uv_idx == 0 and ANTIOX[antiox]["light"] > 0.9:
-        st.warning(t("⚠️ Pigmento fotosensible, empaque transparente y sin antioxidante efectivo.",
-                     "⚠️ Light-sensitive pigment, clear packaging, no effective antioxidant."))
-
-# ---------------------------------------------------------------- mezclas
+# ---------------------------------------------------------------- formulación
 with tab_b:
-    st.subheader("🧪 " + t("Constructor de mezclas", "Blend builder"))
-    st.caption(t("Hasta 5 componentes, cada uno activable. Tono indicativo por mezcla ponderada.",
-                 "Up to 5 components, each toggleable. Indicative hue by weighted mixing."))
+    st.subheader("🧪 " + t("Formulación", "Formulation"))
+    st.caption(t("Los componentes se encienden y apagan en la barra lateral. "
+                 "Tono indicativo por mezcla ponderada, no sustituye matching espectrofotométrico.",
+                 "Components are toggled in the sidebar. Indicative hue by weighted mixing."))
+    f1, f2 = st.columns([1, 2.2])
+    with f1:
+        st.markdown(swatch(B["hex"], t("Tono puro", "Pure hue"), B["hex"]),
+                    unsafe_allow_html=True)
+        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+        st.markdown(swatch(on_substrate(B["hex"], B["delivered"]),
+                           t("Sobre producto", "On product"),
+                           t("entrega ", "delivery ") + f"{B['delivered']:.0f}%"),
+                    unsafe_allow_html=True)
+    with f2:
+        st.dataframe(pd.DataFrame([
+            {t("Componente", "Component"): n,
+             t("Dosis", "Dose"): f"{s*100:.0f}%",
+             t("Tono", "Hue"): PIGMENTS[n]["hue"],
+             t("Química", "Chemical"): f"{R['chem']:.0f}%",
+             t("Entregado", "Delivered"): f"{R['delivered']:.0f}%"}
+            for n, s, R in B["parts"]]), hide_index=True, use_container_width=True)
+        cols = st.columns(len(B["parts"]))
+        for col, (n, s, R) in zip(cols, B["parts"]):
+            col.markdown(swatch(PIGMENTS[n]["hue"], n.split(" (")[0], f"{s*100:.0f}%"),
+                         unsafe_allow_html=True)
 
-    defaults = ["Paprika (WD)", "Lycopene", "Bixin (annatto oil)",
-                "Caramel colour", "\u03b2-apo-8'-carotenal"]
-    st.caption(t("Arranque sugerido: el eje rojo lo sostiene el licopeno. Mezclas "
-                 "dominadas por p\u00e1prika resultan demasiado naranjas frente a la referencia.",
-                 "Suggested start: lycopene carries the red axis. Paprika-dominant blends "
-                 "come out too orange against the reference."))
-    slots, cols = [], st.columns(5)
-    for i in range(5):
-        with cols[i]:
-            on = st.toggle(f"#{i+1}", value=(i < 4), key=f"tg_{i}")
-            pig = st.selectbox(t("Componente", "Component"), pig_list,
-                               index=pig_list.index(defaults[i]), key=f"bp_{i}")
-            dose = st.slider("%", 0, 100, [20, 60, 5, 15, 10][i], 5,
-                             key=f"bd_{i}", disabled=not on)
-            if on and dose > 0:
-                slots.append((pig, dose))
-
-    st.session_state["blend"] = None
-    if slots:
-        total = sum(d for _, d in slots)
-        rgb, weight, rows = np.zeros(3), 0.0, []
-        for name, dose in slots:
-            R = full_result(name, stages, ph_val, antiox, ca_pct, ca_on, dosing, cook_loss)
-            w = dose / total
-            eff = w * R["delivered"] / 100.0
-            rgb += np.array(mcolors.to_rgb(PIGMENTS[name]["hue"])) * eff
-            weight += eff
-            rows.append({t("Pigmento", "Pigment"): name,
-                         t("Dosis", "Dose"): f"{w*100:.0f}%",
-                         t("Qu\u00edmica", "Chemical"): f"{R['chem']:.0f}%",
-                         t("Entregado", "Delivered"): f"{R['delivered']:.0f}%",
-                         "_d": R["delivered"]})
-        if weight > 0:
-            hexm = mcolors.to_hex(np.clip(rgb / weight, 0, 1))
-            st.session_state["blend"] = dict(
-                hex=hexm, delivered=weight * 100.0,
-                names=[n for n, _ in slots],
-                shares=[d / total for _, d in slots])
-            b1, b2 = st.columns([1, 2.2])
-            with b1:
-                st.markdown(swatch(hexm, t("Mezcla", "Blend"),
-                                   f"{hexm} \u00b7 {weight*100:.0f}%"),
-                            unsafe_allow_html=True)
-            with b2:
-                st.dataframe(pd.DataFrame(rows).drop(columns=["_d"]),
-                             hide_index=True, use_container_width=True)
-            worst = min(rows, key=lambda r: r["_d"])
-            st.info(t("Componente limitante: ", "Limiting component: ") +
-                    f"**{worst[t('Pigmento','Pigment')]}** ({worst['_d']:.0f}%)")
-    else:
-        st.info(t("Activa al menos un componente.", "Enable at least one component."))
-
+# ---------------------------------------------------------------- recomendador
 with tab_r:
-    # ------------------------------------------------------------------
-    # BLOQUE 1 — Referencia artificial vs. mezcla propuesta
-    # ------------------------------------------------------------------
-    st.subheader("\u2696\ufe0f " + t("Referencia artificial vs. propuesta natural",
-                                      "Artificial reference vs. natural proposal"))
-
+    st.subheader("⚖️ " + t("Referencia artificial vs. propuesta natural",
+                           "Artificial reference vs. natural proposal"))
     REF = "Red 40 + Yellow 6"
-    ref_dosing = {"bath": 1.0}     # como lo hacen hoy: color en el agua
-    Rref = full_result(REF, stages, ph_val, antiox, ca_pct, ca_on, ref_dosing, cook_loss)
+    Rref = full_result(REF, stages, ph_val, antiox, ca_pct, ca_on, {"bath": 1.0}, cook_loss)
     ref_hue = PIGMENTS[REF]["hue"]
     ref_sub = on_substrate(ref_hue, Rref["delivered"])
-
-    blend = st.session_state.get("blend")
+    blend_sub = on_substrate(B["hex"], B["delivered"])
 
     r1, r2, r3 = st.columns([1, 1, 1.3])
     with r1:
@@ -660,69 +681,41 @@ with tab_r:
         st.markdown(swatch(ref_sub, t("Sobre producto", "On product"),
                            t("entrega ", "delivery ") + f"{Rref['delivered']:.0f}%"),
                     unsafe_allow_html=True)
-        st.caption(t("Dosificado en el ba\u00f1o de agua, como el proceso actual.",
-                     "Dosed in the water bath, as in the current process."))
-
+        st.caption(t("Dosificado en el baño, como el proceso actual.",
+                     "Dosed in the bath, as in the current process."))
     with r2:
         st.markdown("**" + t("PROPUESTA", "PROPOSAL") + "**")
-        if blend:
-            blend_sub = on_substrate(blend["hex"], blend["delivered"])
-            st.markdown(swatch(blend["hex"], t("Mezcla natural", "Natural blend"),
-                               t("tono puro", "pure hue")), unsafe_allow_html=True)
-            st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-            st.markdown(swatch(blend_sub, t("Sobre producto", "On product"),
-                               t("entrega ", "delivery ") + f"{blend['delivered']:.0f}%"),
-                        unsafe_allow_html=True)
-            st.caption(" + ".join(
-                f"{n.split(' (')[0]} {s*100:.0f}%"
-                for n, s in zip(blend["names"], blend["shares"])))
-        else:
-            st.info(t("Arma una mezcla en la pesta\u00f1a Mezclas.",
-                      "Build a blend in the Blends tab."))
-
+        st.markdown(swatch(B["hex"], t("Formulación", "Formulation"),
+                           t("tono puro", "pure hue")), unsafe_allow_html=True)
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+        st.markdown(swatch(blend_sub, t("Sobre producto", "On product"),
+                           t("entrega ", "delivery ") + f"{B['delivered']:.0f}%"),
+                    unsafe_allow_html=True)
+        st.caption(" + ".join(f"{n.split(' (')[0]} {s*100:.0f}%" for n, s, _ in B["parts"]))
     with r3:
-        st.markdown("**" + t("DESEMPE\u00d1O", "PERFORMANCE") + "**")
-        if blend:
-            blend_sub = on_substrate(blend["hex"], blend["delivered"])
-            dE_pure = ciede2000(srgb_to_lab(ref_hue), srgb_to_lab(blend["hex"]))
-            dE_prod = ciede2000(srgb_to_lab(ref_sub), srgb_to_lab(blend_sub))
-            perf = (blend["delivered"] / Rref["delivered"] * 100.0) if Rref["delivered"] > 0 else 0.0
-
-            m1, m2 = st.columns(2)
-            m1.metric("\u0394E\u2080\u2080 " + t("tono", "hue"), f"{dE_pure:.1f}",
-                      help=t("Diferencia de tono puro, sin considerar intensidad",
-                             "Pure hue difference, intensity aside"))
-            m2.metric("\u0394E\u2080\u2080 " + t("producto", "product"), f"{dE_prod:.1f}",
-                      help=t("Diferencia como se ve sobre la carne",
-                             "Difference as seen on the meat"))
-            st.metric(t("Desempe\u00f1o vs. referencia", "Performance vs. reference"),
-                      f"{perf:.0f}%",
-                      delta=f"{blend['delivered'] - Rref['delivered']:+.0f} pts "
-                            + t("de entrega", "of delivery"))
-
-            if dE_prod <= 2.0:
-                st.success(t("\u2705 Diferencia imperceptible para el consumidor (\u0394E\u2080\u2080 \u2264 2).",
-                             "\u2705 Imperceptible to the consumer (\u0394E\u2080\u2080 \u2264 2)."))
-            elif dE_prod <= 4.0:
-                st.warning(t("\u26a0\ufe0f Perceptible en comparaci\u00f3n lado a lado, aceptable aislado.",
-                             "\u26a0\ufe0f Perceptible side by side, acceptable in isolation."))
-            else:
-                st.error(t("\u274c Diferencia evidente. Ajustar proporciones o a\u00f1adir corrector de tono.",
-                           "\u274c Obvious difference. Adjust ratios or add a hue corrector."))
-
-            st.caption(t("Umbrales provisionales. Sustituir por la tolerancia real del cliente "
-                         "cuando entregue el L*a*b* objetivo y la muestra f\u00edsica.",
-                         "Provisional thresholds. Replace with the customer tolerance once the "
-                         "target L*a*b* and physical sample are supplied."))
+        st.markdown("**" + t("DESEMPEÑO", "PERFORMANCE") + "**")
+        dE_pure = ciede2000(srgb_to_lab(ref_hue), srgb_to_lab(B["hex"]))
+        dE_prod = ciede2000(srgb_to_lab(ref_sub), srgb_to_lab(blend_sub))
+        perf = (B["delivered"] / Rref["delivered"] * 100.0) if Rref["delivered"] > 0 else 0.0
+        m1, m2 = st.columns(2)
+        m1.metric("ΔE₀₀ " + t("tono", "hue"), f"{dE_pure:.1f}")
+        m2.metric("ΔE₀₀ " + t("producto", "product"), f"{dE_prod:.1f}")
+        st.metric(t("Desempeño vs. referencia", "Performance vs. reference"), f"{perf:.0f}%",
+                  delta=f"{B['delivered'] - Rref['delivered']:+.0f} pts")
+        if dE_prod <= 2.0:
+            st.success(t("✅ Diferencia imperceptible (ΔE₀₀ ≤ 2).",
+                         "✅ Imperceptible difference (ΔE₀₀ ≤ 2)."))
+        elif dE_prod <= 4.0:
+            st.warning(t("⚠️ Perceptible lado a lado, aceptable aislado.",
+                         "⚠️ Perceptible side by side, acceptable in isolation."))
         else:
-            st.caption(t("Sin mezcla activa.", "No active blend."))
+            st.error(t("❌ Diferencia evidente. Ajustar proporciones.",
+                       "❌ Obvious difference. Adjust ratios."))
+        st.caption(t("Umbrales provisionales. Sustituir por la tolerancia real del cliente.",
+                     "Provisional thresholds. Replace with the customer tolerance."))
 
     st.markdown("---")
-
-    # ------------------------------------------------------------------
-    # BLOQUE 2 — Búsqueda libre por tono
-    # ------------------------------------------------------------------
-    st.subheader("\U0001F3AF " + t("B\u00fasqueda por tono", "Target hue search"))
+    st.subheader("🎯 " + t("Búsqueda por tono", "Target hue search"))
     rc1, rc2 = st.columns([1, 2])
     with rc1:
         target = st.color_picker(t("Color objetivo", "Target colour"), ref_hue)
@@ -736,23 +729,19 @@ with tab_r:
             R = full_result(name, stages, ph_val, antiox, ca_pct, ca_on, dosing, cook_loss)
             ranked.append((R["delivered"] - dE * 1.6, name, dE, R["delivered"]))
         ranked.sort(reverse=True)
-        st.markdown("### \U0001F3C6 Ranking")
+        st.markdown("### 🏆 Ranking")
         for _, name, dE, dv in ranked[:5]:
-            st.markdown(
-                f"<span style='color:{PIGMENTS[name]['hue']};font-size:18px'>"
-                f"{'\u2588' * max(1, int(dv / 10))}</span> **{name}** — "
-                f"\u0394E\u2080\u2080 {dE:.0f} \u00b7 {t('entrega','delivery')} {dv:.0f}%",
-                unsafe_allow_html=True)
-        best = ranked[0]
-        if best[3] < 25:
-            st.error(t("\u274c Ning\u00fan pigmento entrega color suficiente con esta dosificaci\u00f3n. "
-                       "Mover el punto de aplicaci\u00f3n antes de cambiar de pigmento.",
-                       "\u274c No pigment delivers enough colour with this dosing. "
-                       "Move the application point before changing pigment."))
-        elif best[2] > 15:
-            st.warning(t("\u26a0\ufe0f Ning\u00fan componente \u00fanico cubre el tono. Usar mezcla.",
-                         "\u26a0\ufe0f No single component covers the hue. Use a blend."))
+            st.markdown(f"<span style='color:{PIGMENTS[name]['hue']};font-size:18px'>"
+                        f"{'█' * max(1, int(dv / 10))}</span> **{name}** — "
+                        f"ΔE₀₀ {dE:.0f} · {t('entrega','delivery')} {dv:.0f}%",
+                        unsafe_allow_html=True)
+        if ranked[0][3] < 25:
+            st.error(t("❌ Ningún pigmento entrega suficiente con esta dosificación.",
+                       "❌ No pigment delivers enough with this dosing."))
+        elif ranked[0][2] > 15:
+            st.warning(t("⚠️ Ningún componente único cubre el tono. Usar mezcla.",
+                         "⚠️ No single component covers the hue. Use a blend."))
         else:
-            st.success(f"\u2705 **{best[1]}** — " + t("candidato principal", "lead candidate"))
+            st.success(f"✅ **{ranked[0][1]}** — " + t("candidato principal", "lead candidate"))
 
 st.caption("Confidential Robertet R&D — Regional Division.")
