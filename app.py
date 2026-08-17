@@ -261,8 +261,9 @@ PIGMENTS = {
 # PUNTOS DE APLICACIÓN
 # --------------------------------------------------------------------------
 # uptake ......... fracción del pigmento dosificado que llega al producto
-# bound .......... fracción inmovilizada que NUNCA se va, por más agua que pase
-# leach_k ........ velocidad de salida de la fracción no fijada (min⁻¹ de contacto acuoso)
+# bound .......... fracción inmovilizada DENTRO de la capa que la difusión alcanza
+# leach_k ........ constante de extracción sobre √Θ, no sobre Θ: la salida desde
+#                  un sólido escala con √(D·t), concentrada en los primeros minutos
 #
 # Los valores son estimaciones de ingeniería. Medirlos es el objeto del
 # Test B del protocolo de Fase 0.
@@ -273,24 +274,24 @@ APP_POINTS = {
         desc_es="Color disuelto en el agua de cocción; migra al producto.",
         desc_en="Colour dissolved in the cooking water; migrates to the product.",
         uptake={"oil": 0.10, "water": 0.55, "both": 0.30, "bind": 0.72},
-        bound={"oil": 0.12, "water": 0.28, "both": 0.18, "bind": 0.76},
-        leach={"oil": 0.045, "water": 0.040, "both": 0.042, "bind": 0.018},
+        bound={"oil": 0.10, "water": 0.25, "both": 0.16, "bind": 0.74},
+        leach={"oil": 0.340, "water": 0.300, "both": 0.320, "bind": 0.130},
     ),
     "gel": dict(
         es="Gel de alginato", en="Alginate gel",
         desc_es="Color dosificado en el gel antes de la coextrusión.",
         desc_en="Colour dosed into the gel before co-extrusion.",
         uptake={"oil": 1.00, "water": 1.00, "both": 1.00, "bind": 1.00},
-        bound={"oil": 0.80, "water": 0.38, "both": 0.60, "bind": 0.55},
-        leach={"oil": 0.015, "water": 0.035, "both": 0.025, "bind": 0.020},
+        bound={"oil": 0.62, "water": 0.26, "both": 0.44, "bind": 0.52},
+        leach={"oil": 0.130, "water": 0.260, "both": 0.190, "bind": 0.150},
     ),
     "meat": dict(
         es="Masa cárnica", en="Meat emulsion",
         desc_es="Color dosificado en la emulsión antes de formar.",
         desc_en="Colour dosed into the emulsion before forming.",
         uptake={"oil": 1.00, "water": 1.00, "both": 1.00, "bind": 1.00},
-        bound={"oil": 0.96, "water": 0.45, "both": 0.72, "bind": 0.93},
-        leach={"oil": 0.008, "water": 0.030, "both": 0.018, "bind": 0.006},
+        bound={"oil": 0.70, "water": 0.30, "both": 0.50, "bind": 0.85},
+        leach={"oil": 0.150, "water": 0.300, "both": 0.220, "bind": 0.120},
     ),
 }
 
@@ -340,6 +341,59 @@ def ph_mult(p, ph):
     d = (lo - ph) if ph < lo else (ph - hi)
     return 1.0 + (p["pen"] - 1.0) * min(d / 1.5, 1.0) * p["pen"]
 
+PRODUCT_START_C = 10.0      # temperatura de la masa al entrar al proceso
+TAU_REF_MIN = 6.0           # constante de enfriamiento para 22 mm de diámetro
+DIAM_REF_MM = 22.0
+
+# Penetración difusiva por unidad de √(min-eq), en mm. Los hidrosolubles son
+# moléculas pequeñas y viajan; los carotenoides van en gotas de grasa y apenas
+# se mueven dentro de la matriz.
+DELTA_COEF = {"water": 0.055, "oil": 0.010}
+# Profundidad óptica de la carne cocida: la luz que devuelve el producto viene
+# aproximadamente del primer milímetro. Determina cuánto de la pérdida real se
+# traduce en pérdida VISIBLE.
+OPTICAL_DEPTH_MM = 1.0
+
+
+def process_timeline(stages, diameter_mm=22.0, per_stage=30):
+    """
+    Perfil fino con TEMPERATURA DEL PRODUCTO, no la del baño.
+
+    El producto no adopta instantáneamente la temperatura del medio: se acerca
+    exponencialmente con una constante que escala con el cuadrado del diámetro.
+    Importa porque el arranque del enfriado ocurre con el producto todavía
+    caliente — ahí se pierde pigmento, no en los últimos minutos a 7 °C.
+    """
+    tau = TAU_REF_MIN * (diameter_mm / DIAM_REF_MM) ** 2
+    steps, clock, T = [], 0.0, PRODUCT_START_C
+    for idx, (label, Tb, mn, o2, wet, agit) in enumerate(stages):
+        if mn <= 0:
+            continue
+        dt = mn / per_stage
+        for _ in range(per_stage):
+            T_next = Tb + (T - Tb) * np.exp(-dt / tau)
+            steps.append(dict(t0=clock, dt=dt, T=(T + T_next) / 2, Tbath=Tb,
+                              o2=o2, wet=wet, agit=agit, stage=idx, label=label))
+            T = T_next
+            clock += dt
+    return steps
+
+
+def diffusion_factor(temp_c, T_ref=20.0, Ea=20000.0):
+    """
+    Movilidad relativa respecto a 20 °C, tipo Arrhenius. Sustituye al factor
+    anterior, que tenía piso en 20 y trataba igual un enfriado a 2 °C que uno a 20.
+    """
+    return float(np.exp(-Ea / 8.314 * (1.0 / (temp_c + 273.15) - 1.0 / (T_ref + 273.15))))
+
+
+def fat_gate(temp_c, mid=37.0, width=3.5):
+    """
+    Estado de la fase grasa. Bajo el rango de fusión la grasa solidifica y el
+    pigmento apolar queda inmovilizado: el enfriado deja de lavarlo.
+    """
+    return float(1.0 / (1.0 + np.exp(-(temp_c - mid) / width)))
+
 
 def stage_k(p, temp_c, o2_exp, ph, ax):
     if temp_c < 40:
@@ -352,59 +406,106 @@ def stage_k(p, temp_c, o2_exp, ph, ax):
     return therm * o2 * ph_mult(p, ph)
 
 
-def thermal_curve(name, stages, ph, ax, n=40):
+def thermal_curve(name, stages, ph, ax, diameter_mm=22.0):
+    """Degradación química sobre el perfil real de temperatura del producto."""
     p = PIGMENTS[name]
-    ts, ys, bounds = [0.0], [100.0], []
-    clock, level = 0.0, 100.0
-    for label, tc, mn, o2, wet, agit in stages:
-        k = stage_k(p, tc, o2, ph, ax)
-        for dt in np.linspace(0, mn, n)[1:]:
-            ts.append(clock + dt)
-            ys.append(level * float(np.exp(-k * dt)))
-        level *= float(np.exp(-k * mn))
-        bounds.append((clock, clock + mn, label, tc, wet))
-        clock += mn
+    ts, ys, level = [0.0], [100.0], 100.0
+    seen = {}
+    for s in process_timeline(stages, diameter_mm):
+        level *= float(np.exp(-stage_k(p, s["T"], s["o2"], ph, ax) * s["dt"]))
+        ts.append(s["t0"] + s["dt"])
+        ys.append(level)
+        seen.setdefault(s["stage"], [s["t0"], 0.0, s["label"], s["Tbath"], s["wet"]])
+        seen[s["stage"]][1] = s["t0"] + s["dt"]
+    bounds = [(v[0], v[1], v[2], v[3], v[4]) for _, v in sorted(seen.items())]
     return np.array(ts), np.array(ys), bounds
 
 
-def aqueous_contact(stages, app_point):
+def diffusive_exposure(stages, polarity, diameter_mm=22.0):
     """
-    Minutos efectivos de contacto acuoso DESPUÉS de que el color está en su sitio.
-    Se calcula solo — el usuario ya no elige un factor de lavado.
-    La agitación y la temperatura aceleran la extracción.
+    Exposición difusiva acumulada Θ, en min-equivalentes. Integra movilidad y
+    agitación sobre el perfil de temperatura del producto, y para apolares
+    aplica la compuerta de solidificación de grasa.
     """
-    total = 0.0
-    for label, tc, mn, o2, wet, agit in stages:
-        if not wet:
+    theta = 0.0
+    for s in process_timeline(stages, diameter_mm):
+        if not s["wet"]:
             continue
-        # El color dosificado en el gel o la masa ya está presente desde el inicio.
-        # El del baño solo empieza a poder salir después de haber entrado.
-        temp_f = 1.0 + max(tc - 20, 0) / 100.0     # más caliente = más extracción
-        agit_f = 1.0 + agit * 0.8                  # agitación mecánica
-        total += mn * temp_f * agit_f
-    return total
+        f = diffusion_factor(s["T"]) * (1.0 + s["agit"] * 0.8)
+        if polarity == "oil":
+            f *= fat_gate(s["T"])
+        theta += s["dt"] * f
+    return theta
 
 
-def physical_retention(name, app_point, stages, cook_loss_pct):
-    """Captación × retención, ambas derivadas del proceso. Sin sliders."""
+def driving_force(water_ratio, recirculated):
+    """
+    Gradiente hacia el agua. Un baño recirculado y cargado extrae menos que agua
+    fresca abundante. Normalizado a 10:1 fresco = 1.00.
+    """
+    f = (water_ratio / (water_ratio + 2.0)) / (10.0 / 12.0)
+    return f * (0.55 if recirculated else 1.0)
+
+
+def aqueous_contact(stages, app_point="meat", diameter_mm=22.0):
+    """Compatibilidad: exposición difusiva de referencia (base hidrosoluble)."""
+    return diffusive_exposure(stages, "water", diameter_mm)
+
+
+def physical_retention(name, app_point, stages, cook_loss_pct,
+                       diameter_mm=22.0, water_ratio=10.0, recirculated=False):
+    """
+    Captación x retención, con cinética de √t.
+
+    La extracción desde un sólido escala con √(D·t), no exponencialmente en t:
+    la pérdida se concentra en los primeros minutos de contacto. Devuelve además
+    la retención EN SUPERFICIE, que es lo que el consumidor ve y que cae mucho
+    más rápido que el promedio porque la lixiviación agota una capa delgada.
+    """
     p = PIGMENTS[name]
     k = pol_key(p)
+    pol = "oil" if p["pol"] == "oil" else "water"
     ap = APP_POINTS[app_point]
-    contact = aqueous_contact(stages, app_point)
 
+    theta = (diffusive_exposure(stages, pol, diameter_mm)
+             * driving_force(water_ratio, recirculated))
     uptake = ap["uptake"][k]
     bound = ap["bound"][k]
     leach = ap["leach"][k]
 
-    retention = bound + (1.0 - bound) * float(np.exp(-leach * contact))
+    # La lixiviacion no vacia el producto entero: solo alcanza la profundidad
+    # que la difusion permite. d_shell es la fraccion de pigmento que se pierde
+    # DENTRO de esa capa; el nucleo no se entera.
+    d_shell = (1.0 - bound) * (1.0 - float(np.exp(-leach * np.sqrt(max(theta, 0.0)))))
 
-    # Arrastre por merma: la grasa y el agua que salen se llevan pigmento.
-    # Solo golpea al color que está dentro de la emulsión.
+    delta = DELTA_COEF[pol] * np.sqrt(max(theta, 0.0))          # penetracion, mm
+    R_mm = max(diameter_mm / 2.0, 0.5)
+    shell = min(1.0, 1.0 - max(0.0, 1.0 - delta / R_mm) ** 2)   # fraccion de volumen
+
+    # Merma: la grasa y el agua exudan desde TODO el volumen. Es perdida de bulk
+    # y no debe atribuirse a la capa superficial.
+    drag = ((cook_loss_pct / 100.0) * (0.9 if pol == "oil" else 0.5)
+            if app_point == "meat" else 0.0)
+
     if app_point == "meat":
-        retention *= (1.0 - (cook_loss_pct / 100.0) * (0.9 if k == "oil" else 0.5))
+        # Perdida total = lo que se va de la capa, ponderado por el peso de la capa.
+        # Un producto grueso pierde menos en proporcion: menos superficie por volumen.
+        retention = (1.0 - shell * d_shell) * (1.0 - drag)
+        # Lo que se VE no es el promedio. La luz penetra ~1 mm en carne, asi que
+        # el ojo lee la capa externa: si esa capa se empobrecio, el producto se ve
+        # palido aunque el promedio apenas se mueva.
+        visible = d_shell * min(1.0, delta / OPTICAL_DEPTH_MM)
+        surface = (1.0 - drag) * (1.0 - visible)
+    else:
+        # En gel y en bano el pigmento ya esta en la capa externa: no hay nucleo
+        # que lo proteja y promedio y superficie coinciden.
+        retention = 1.0 - d_shell
+        surface = retention
 
     return dict(uptake=uptake, retention=max(retention, 0.0),
-                phys=uptake * max(retention, 0.0), contact=contact)
+                phys=uptake * max(retention, 0.0), contact=theta,
+                surface=min(max(surface, 0.0), 1.0),
+                delta_mm=delta, shell=shell)
 
 
 def calcium_retention(name, ca_pct, ca_step_on):
@@ -416,29 +517,33 @@ def calcium_retention(name, ca_pct, ca_step_on):
     return float(1.0 - (1.0 - p["ca"]) * min(ca_pct / 1.0, 1.5))
 
 
-def full_result(name, stages, ph, ax, ca_pct, ca_on, dosing, cook_loss):
+def full_result(name, stages, ph, ax, ca_pct, ca_on, dosing, cook_loss,
+                diameter_mm=22.0, water_ratio=10.0, recirculated=False):
     """
     dosing: dict {punto: fracción de dosis}. Puede tener 1, 2 o 3 puntos activos,
     o estar vacío.
     """
-    ts, ys, bounds = thermal_curve(name, stages, ph, ax)
+    ts, ys, bounds = thermal_curve(name, stages, ph, ax, diameter_mm)
     chem = float(ys[-1])
     ca = calcium_retention(name, ca_pct, ca_on)
 
-    delivered, breakdown = 0.0, {}
+    delivered, surf_num, breakdown = 0.0, 0.0, {}
     for pt, share in dosing.items():
         if share <= 0:
             continue
-        ph_r = physical_retention(name, pt, stages, cook_loss)
+        ph_r = physical_retention(name, pt, stages, cook_loss,
+                                  diameter_mm, water_ratio, recirculated)
         d = chem * ca * ph_r["phys"] * share
         delivered += d
+        surf_num += chem * ca * ph_r["uptake"] * ph_r["surface"] * share
         breakdown[pt] = dict(share=share, **ph_r, delivered=d)
 
     total_share = sum(dosing.values()) or 1.0
     phys_eff = (delivered / (chem * ca)) / total_share * 100.0 if chem * ca > 0 else 0.0
 
     return dict(ts=ts, ys=ys, bounds=bounds, chem=chem, ca=ca,
-                phys=phys_eff, delivered=delivered, breakdown=breakdown)
+                phys=phys_eff, delivered=delivered, surface=surf_num,
+                breakdown=breakdown)
 
 
 def shelf_curve(name, months, uv_idx, storage_c, ax):
@@ -539,28 +644,31 @@ def swatch(hex_color, label, sub=""):
 # ==========================================================================
 # MEZCLA — la formulación es el objeto principal, no un pigmento suelto
 # ==========================================================================
-def blend_result(components, stages, ph, ax, ca_pct, ca_on, dosing, cook_loss):
+def blend_result(components, stages, ph, ax, ca_pct, ca_on, dosing, cook_loss,
+                 diameter_mm=22.0, water_ratio=10.0, recirculated=False):
     """
     components: lista de (nombre, participación 0-1) ya normalizada.
     Una sola componente al 100% es un 'single'; la matemática es la misma.
     """
     if not components:
         return None
-    parts, ys, chem, delivered = [], None, 0.0, 0.0
+    parts, ys, chem, delivered, surface = [], None, 0.0, 0.0, 0.0
     rgb, weight = np.zeros(3), 0.0
     for name, share in components:
-        R = full_result(name, stages, ph, ax, ca_pct, ca_on, dosing, cook_loss)
+        R = full_result(name, stages, ph, ax, ca_pct, ca_on, dosing, cook_loss,
+                        diameter_mm, water_ratio, recirculated)
         parts.append((name, share, R))
         ys = share * R["ys"] if ys is None else ys + share * R["ys"]
         chem += share * R["chem"]
         delivered += share * R["delivered"]
+        surface += share * R.get("surface", R["delivered"])
         eff = share * R["delivered"] / 100.0
         rgb += np.array(mcolors.to_rgb(PIGMENTS[name]["hue"])) * eff
         weight += eff
     hexm = mcolors.to_hex(np.clip(rgb / weight, 0, 1)) if weight > 0 else "#999999"
     phys = (delivered / chem * 100.0) if chem > 0 else 0.0
     return dict(parts=parts, ts=parts[0][2]["ts"], ys=ys, bounds=parts[0][2]["bounds"],
-                chem=chem, phys=phys, delivered=delivered, hex=hexm,
+                chem=chem, phys=phys, delivered=delivered, surface=surface, hex=hexm,
                 ca=parts[0][2]["ca"], single=(len(parts) == 1))
 
 
@@ -831,6 +939,18 @@ ca_on = st.sidebar.checkbox(t("Baño de fijado con calcio", "Calcium setting bat
 ca_pct = st.sidebar.slider("CaCl₂ %", 0.0, 3.0, 1.0, 0.1, disabled=not ca_on)
 ph_val = st.sidebar.slider("pH", 2.0, 10.0, 5.8, 0.1)
 cook_loss = st.sidebar.slider(t("Merma de cocción (%)", "Cook loss (%)"), 0, 25, 6)
+diameter_mm = st.sidebar.slider(t("Diámetro del producto (mm)", "Product diameter (mm)"),
+                                8, 90, 22, 1,
+                                help=t("Gobierna la inercia térmica y qué tan superficial "
+                                       "es la pérdida de color.",
+                                       "Drives thermal inertia and how superficial the "
+                                       "colour loss is."))
+water_ratio = st.sidebar.slider(t("Baño — agua : producto", "Bath — water : product"),
+                                1.0, 30.0, 10.0, 1.0)
+recirculated = st.sidebar.checkbox(t("Baño recirculado / cargado", "Recirculated / loaded bath"),
+                                   value=False,
+                                   help=t("Un baño saturado de pigmento extrae menos.",
+                                          "A pigment-loaded bath extracts less."))
 antiox = st.sidebar.selectbox(t("Sistema antioxidante", "Antioxidant system"), list(ANTIOX.keys()))
 
 st.sidebar.markdown("--- \n### 📦 " + t("Anaquel", "Shelf life"))
@@ -839,7 +959,8 @@ uv_opts = t(["Transparente", "Semi-opaco", "Opaco / sin UV"], ["Clear", "Semi-op
 uv_idx = uv_opts.index(st.sidebar.selectbox(t("Empaque", "Packaging"), uv_opts, index=1))
 months = st.sidebar.slider(t("Meses", "Months"), 1, 24, 6)
 
-B = blend_result(components, stages, ph_val, antiox, ca_pct, ca_on, dosing, cook_loss)
+B = blend_result(components, stages, ph_val, antiox, ca_pct, ca_on, dosing, cook_loss,
+                 diameter_mm, water_ratio, recirculated)
 
 # ==========================================================================
 # DASHBOARD
@@ -874,14 +995,24 @@ with tab_p:
     st.markdown(f'<div class="rb-band" style="background:{B["hex"]}">{title}</div>',
                 unsafe_allow_html=True)
     st.markdown(
-        '<div class="rb-kpis">'
+        '<div class="rb-kpis" style="grid-template-columns:repeat(4,1fr)">'
         + kpi(t("Retención química", "Chemical retention"), f"{B['chem']:.1f}%",
               t("Sobrevive la molécula", "Molecule survives"))
         + kpi(t("Retención física", "Physical retention"), f"{B['phys']:.1f}%",
               t("Se queda en el producto", "Stays on the product"))
         + kpi(t("Color entregado", "Delivered colour"), f"{B['delivered']:.1f}%",
+              t("Promedio en el producto", "Average in the product"), hero=True)
+        + kpi(t("En superficie", "At the surface"), f"{B.get('surface', 0):.1f}%",
               t("Lo que ve el consumidor", "What the consumer sees"), hero=True)
         + '</div><div style="height:16px"></div>', unsafe_allow_html=True)
+
+    if B.get("surface", 100) < B["delivered"] - 8:
+        st.warning(t(f"⚠️ La superficie está {B['delivered'] - B['surface']:.0f} puntos por "
+                     "debajo del promedio: el producto se verá más pálido de lo que sugiere "
+                     "el contenido total de pigmento. La luz solo lee el primer milímetro.",
+                     f"⚠️ The surface is {B['delivered'] - B['surface']:.0f} points below the "
+                     "average: the product will look paler than the total pigment content "
+                     "suggests. Light only reads the first millimetre."))
 
     fig = go.Figure()
     for start, end, label, tc, wet in B["bounds"]:
@@ -929,11 +1060,20 @@ with tab_p:
                 {t("Punto", "Point"): APP_POINTS[k]["es"] if ES else APP_POINTS[k]["en"],
                  t("Dosis", "Dose"): f"{v['share']*100:.0f}%",
                  t("Captación", "Uptake"): f"{v['uptake']*100:.0f}%",
-                 t("Retención", "Retention"): f"{v['retention']*100:.0f}%"}
+                 t("Retención", "Retention"): f"{v['retention']*100:.0f}%",
+                 t("Superficie", "Surface"): f"{v['surface']*100:.0f}%",
+                 t("Penetración", "Penetration"): f"{v['delta_mm']:.2f} mm"}
                 for k, v in first["breakdown"].items()]),
                 hide_index=True, use_container_width=True)
-        st.caption(t(f"Contacto acuoso calculado: {aqueous_contact(stages,'meat'):.0f} min-eq.",
-                     f"Computed aqueous contact: {aqueous_contact(stages,'meat'):.0f} min-eq."))
+        st.caption(t(
+            f"Exposición difusiva calculada sobre el perfil real de temperatura del "
+            f"producto: {diffusive_exposure(stages, 'water', diameter_mm):.0f} min-eq para "
+            f"hidrosolubles, {diffusive_exposure(stages, 'oil', diameter_mm):.0f} para "
+            f"apolares — la grasa solidifica al enfriar y los inmoviliza.",
+            f"Diffusive exposure computed on the product's real temperature profile: "
+            f"{diffusive_exposure(stages, 'water', diameter_mm):.0f} min-eq for water-soluble, "
+            f"{diffusive_exposure(stages, 'oil', diameter_mm):.0f} for apolar — fat solidifies "
+            f"on chilling and immobilises them."))
     with c2:
         gap = B["chem"] - B["delivered"]
         worst = min(B["parts"], key=lambda x: x[2]["delivered"])
@@ -1045,9 +1185,10 @@ with tab_d:
     batch = d3.number_input(t("Lote (kg)", "Batch (kg)"), 1, 100000, 1000, 100)
 
     Rref_d = full_result(REF_D, stages, ph_val, antiox, ca_pct, ca_on,
-                         {ref_point: 1.0}, cook_loss)
-    cache_d = {n: full_result(n, stages, ph_val, antiox, ca_pct, ca_on, dosing, cook_loss)
-               for n in {c[0] for c in [(p[0], 0) for p in B["parts"]]}}
+                         {ref_point: 1.0}, cook_loss, diameter_mm, water_ratio, recirculated)
+    cache_d = {n: full_result(n, stages, ph_val, antiox, ca_pct, ca_on, dosing,
+                              cook_loss, diameter_mm, water_ratio, recirculated)
+               for n in {p[0] for p in B["parts"]}}
     est = dose_estimate([(n, s) for n, s, _ in B["parts"]], cache_d, REF_D, ref_dose, Rref_d)
 
     # Techo práctico: por encima de ~0.5% sobre producto no hay dosis que sea
@@ -1129,7 +1270,8 @@ with tab_d:
             alt_pts = {}
             for pt in APP_POINTS:
                 c_alt = {n: full_result(n, stages, ph_val, antiox, ca_pct, ca_on,
-                                        {pt: 1.0}, cook_loss) for n, _, _ in B["parts"]}
+                                        {pt: 1.0}, cook_loss, diameter_mm, water_ratio, recirculated)
+                         for n, _, _ in B["parts"]}
                 e_alt = dose_estimate([(n, s) for n, s, _ in B["parts"]],
                                       c_alt, REF_D, ref_dose, Rref_d)
                 alt_pts[pt] = e_alt["total_ppm"] if e_alt else None
@@ -1153,7 +1295,8 @@ with tab_d:
 
 with tab_r:
     REF = "Red 40 + Yellow 6"
-    Rref = full_result(REF, stages, ph_val, antiox, ca_pct, ca_on, {"bath": 1.0}, cook_loss)
+    Rref = full_result(REF, stages, ph_val, antiox, ca_pct, ca_on, {"bath": 1.0},
+                       cook_loss, diameter_mm, water_ratio, recirculated)
     ref_hue = PIGMENTS[REF]["hue"]
     ref_sub = on_substrate(ref_hue, Rref["delivered"])
     blend_sub = on_substrate(B["hex"], B["delivered"])
@@ -1168,7 +1311,8 @@ with tab_r:
                  "colour difference on the product — below 2 is imperceptible."))
 
     # Resultados por pigmento, reutilizados por el optimizador
-    cache = {n: full_result(n, stages, ph_val, antiox, ca_pct, ca_on, dosing, cook_loss)
+    cache = {n: full_result(n, stages, ph_val, antiox, ca_pct, ca_on, dosing, cook_loss,
+                            diameter_mm, water_ratio, recirculated)
              for n in PIGMENTS}
     alt = suggest_alternative(ref_sub, cache, REF) if dosing else None
 
