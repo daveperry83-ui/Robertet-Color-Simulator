@@ -558,6 +558,112 @@ def blend_result(components, stages, ph, ax, ca_pct, ca_on, dosing, cook_loss):
                 ca=parts[0][2]["ca"], single=(len(parts) == 1))
 
 
+
+def combo_metrics(components, cache, ref_sub):
+    """Tono, entrega y ΔE₀₀ de una combinación, a partir de resultados ya calculados."""
+    delivered, rgb, weight = 0.0, np.zeros(3), 0.0
+    for name, share in components:
+        d = cache[name]["delivered"]
+        delivered += share * d
+        eff = share * d / 100.0
+        rgb += np.array(mcolors.to_rgb(PIGMENTS[name]["hue"])) * eff
+        weight += eff
+    if weight <= 0:
+        return None
+    hexm = mcolors.to_hex(np.clip(rgb / weight, 0, 1))
+    sub = on_substrate(hexm, delivered)
+    return dict(components=components, delivered=delivered, hex=hexm, sub=sub,
+                dE=ciede2000(srgb_to_lab(ref_sub), srgb_to_lab(sub)))
+
+
+def suggest_alternative(ref_sub, cache, exclude_ref, min_delivered=25.0, min_chem=60.0):
+    """
+    Busca la formulación que más se acerca al color de referencia.
+    Explora componentes sueltos, pares y tríos sobre el catálogo disponible.
+
+    Filtro de viabilidad (min_chem): se excluyen pigmentos cuya retención química
+    cae por debajo del umbral en este proceso. El modelo trata la degradación como
+    pérdida de intensidad a tono constante, y eso deja de ser cierto cuando el
+    pigmento se destruye: las betalaínas viran a pardo y las antocianinas a
+    azul-violeta. Sin este filtro el optimizador recomienda pigmentos muertos
+    porque su tono nominal mejora la mezcla en el papel.
+    """
+    pool = [n for n in cache
+            if n != exclude_ref and cache[n]["chem"] >= min_chem]
+    best = []
+
+    for n in pool:                                          # sueltos
+        r = combo_metrics([(n, 1.0)], cache, ref_sub)
+        if r and r["delivered"] >= min_delivered:
+            best.append(r)
+
+    for i, a in enumerate(pool):                            # pares
+        for b in pool[i + 1:]:
+            for w in range(10, 100, 10):
+                r = combo_metrics([(a, w / 100), (b, 1 - w / 100)], cache, ref_sub)
+                if r and r["delivered"] >= min_delivered:
+                    best.append(r)
+
+    top = sorted(pool, key=lambda n: -cache[n]["delivered"])[:6]
+    for i, a in enumerate(top):                             # tríos
+        for j, b in enumerate(top[i + 1:], i + 1):
+            for c in top[j + 1:]:
+                for wa in (20, 40, 60):
+                    for wb in (20, 40, 60):
+                        if wa + wb >= 100:
+                            continue
+                        r = combo_metrics(
+                            [(a, wa / 100), (b, wb / 100), (c, (100 - wa - wb) / 100)],
+                            cache, ref_sub)
+                        if r and r["delivered"] >= min_delivered:
+                            best.append(r)
+
+    if not best:
+        return None
+    best.sort(key=lambda r: (round(r["dE"], 2), -r["delivered"]))
+    return best[0]
+
+
+def result_card(title, subtitle, sub_hex, pure_hex, composition,
+                dE, delivered, perf, accent, tag=""):
+    """Tarjeta comparativa: muestra sobre producto + tono puro + métricas."""
+    dE_txt = "—" if dE is None else f"{dE:.1f}"
+    perf_txt = "—" if perf is None else f"{perf:.0f}%"
+    chip = (f'<span style="font-size:9.5px;letter-spacing:.1em;padding:2px 8px;'
+            f'border-radius:20px;background:{accent};color:#fff">{tag}</span>'
+            if tag else "")
+    return f'''
+<div style="border:1px solid {THEME["rule"]};border-top:3px solid {accent};
+            border-radius:10px;padding:14px 15px;background:#fff;height:100%">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+    <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+                color:{THEME["muted"]};font-weight:600">{title}</div>{chip}
+  </div>
+  <div style="font-size:13.5px;font-weight:600;color:{THEME["ink"]};margin:3px 0 9px">
+    {subtitle}</div>
+  <div style="height:72px;border-radius:8px;background:{sub_hex};
+              border:1px solid {THEME["rule"]};box-shadow:inset 0 1px 4px rgba(0,0,0,.10)"></div>
+  <div style="display:flex;gap:6px;align-items:center;margin-top:6px">
+    <div style="width:20px;height:14px;border-radius:3px;background:{pure_hex};
+                border:1px solid {THEME["rule"]}"></div>
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;
+                 color:{THEME["muted"]}">{pure_hex}</span>
+  </div>
+  <div style="font-size:11.5px;color:{THEME["muted"]};margin:9px 0 11px;
+              line-height:1.45;min-height:32px">{composition}</div>
+  <div style="display:flex;gap:14px;border-top:1px solid {THEME["rule"]};padding-top:9px">
+    <div><div style="font-size:9.5px;letter-spacing:.08em;color:{THEME["muted"]}">ΔE₀₀</div>
+      <div style="font-size:19px;font-weight:700;color:{THEME["ink"]}">{dE_txt}</div></div>
+    <div><div style="font-size:9.5px;letter-spacing:.08em;color:{THEME["muted"]}">
+      {t("ENTREGA", "DELIVERY")}</div>
+      <div style="font-size:19px;font-weight:700;color:{THEME["ink"]}">{delivered:.0f}%</div></div>
+    <div><div style="font-size:9.5px;letter-spacing:.08em;color:{THEME["muted"]}">
+      {t("VS REF", "VS REF")}</div>
+      <div style="font-size:19px;font-weight:700;color:{accent}">{perf_txt}</div></div>
+  </div>
+</div>'''
+
+
 # ==========================================================================
 # BARRA LATERAL
 # ==========================================================================
@@ -889,94 +995,131 @@ with tab_b:
 
 # ---------------------------------------------------------------- recomendador
 with tab_r:
-    st.subheader("⚖️ " + t("Referencia artificial vs. propuesta natural",
-                           "Artificial reference vs. natural proposal"))
     REF = "Red 40 + Yellow 6"
     Rref = full_result(REF, stages, ph_val, antiox, ca_pct, ca_on, {"bath": 1.0}, cook_loss)
     ref_hue = PIGMENTS[REF]["hue"]
     ref_sub = on_substrate(ref_hue, Rref["delivered"])
     blend_sub = on_substrate(B["hex"], B["delivered"])
 
-    r1, r2, r3 = st.columns([1, 1, 1.3])
-    with r1:
-        st.markdown("**" + t("REFERENCIA", "REFERENCE") + "**")
-        st.markdown(swatch(ref_hue, "Red 40 + Yellow 6", t("tono puro", "pure hue")),
-                    unsafe_allow_html=True)
-        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-        st.markdown(swatch(ref_sub, t("Sobre producto", "On product"),
-                           t("entrega ", "delivery ") + f"{Rref['delivered']:.0f}%"),
-                    unsafe_allow_html=True)
-        st.caption(t("Dosificado en el baño, como el proceso actual.",
-                     "Dosed in the bath, as in the current process."))
-    with r2:
-        st.markdown("**" + t("PROPUESTA", "PROPOSAL") + "**")
-        st.markdown(swatch(B["hex"], t("Formulación", "Formulation"),
-                           t("tono puro", "pure hue")), unsafe_allow_html=True)
-        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-        st.markdown(swatch(blend_sub, t("Sobre producto", "On product"),
-                           t("entrega ", "delivery ") + f"{B['delivered']:.0f}%"),
-                    unsafe_allow_html=True)
-        st.caption(" + ".join(f"{n.split(' (')[0]} {s*100:.0f}%" for n, s, _ in B["parts"]))
-    with r3:
-        st.markdown("**" + t("DESEMPEÑO", "PERFORMANCE") + "**")
-        dE_pure = ciede2000(srgb_to_lab(ref_hue), srgb_to_lab(B["hex"]))
-        dE_prod = ciede2000(srgb_to_lab(ref_sub), srgb_to_lab(blend_sub))
-        perf = (B["delivered"] / Rref["delivered"] * 100.0) if Rref["delivered"] > 0 else 0.0
-        m1, m2 = st.columns(2)
-        m1.metric("ΔE₀₀ " + t("tono", "hue"), f"{dE_pure:.1f}")
-        m2.metric("ΔE₀₀ " + t("producto", "product"), f"{dE_prod:.1f}")
-        st.metric(t("Desempeño vs. referencia", "Performance vs. reference"), f"{perf:.0f}%",
-                  delta=f"{B['delivered'] - Rref['delivered']:+.0f} pts")
-        if dE_prod <= 2.0:
-            st.success(t("✅ Diferencia imperceptible (ΔE₀₀ ≤ 2).",
-                         "✅ Imperceptible difference (ΔE₀₀ ≤ 2)."))
-        elif dE_prod <= 4.0:
-            st.warning(t("⚠️ Perceptible lado a lado, aceptable aislado.",
-                         "⚠️ Perceptible side by side, acceptable in isolation."))
-        else:
-            st.error(t("❌ Diferencia evidente. Ajustar proporciones.",
-                       "❌ Obvious difference. Adjust ratios."))
-        st.caption(t("Umbrales provisionales. Sustituir por la tolerancia real del cliente.",
-                     "Provisional thresholds. Replace with the customer tolerance."))
+    st.subheader("⚖️ " + t("Comparación contra la referencia sintética",
+                           "Benchmark against the synthetic reference"))
+    st.caption(t("Las tres columnas se miden contra el mismo objetivo: el color que entrega "
+                 "el sistema artificial en el proceso configurado. ΔE₀₀ es la diferencia de "
+                 "color percibida sobre el producto — por debajo de 2 es imperceptible.",
+                 "All three columns are measured against the same target: the colour the "
+                 "artificial system delivers in the configured process. ΔE₀₀ is the perceived "
+                 "colour difference on the product — below 2 is imperceptible."))
 
-    st.markdown("---")
-    st.subheader("🎯 " + t("Búsqueda por tono", "Target hue search"))
-    rc1, rc2 = st.columns([1, 2])
-    with rc1:
-        target = st.color_picker(t("Color objetivo", "Target colour"), ref_hue)
-        st.markdown(f'<div style="background:{target};height:100px;border-radius:10px;'
-                    f'border:1px solid #ccc;"></div>', unsafe_allow_html=True)
-    with rc2:
-        lab_t = srgb_to_lab(target)
-        ranked = []
-        for name, p in PIGMENTS.items():
-            dE = ciede2000(lab_t, srgb_to_lab(p["hue"]))
-            R = full_result(name, stages, ph_val, antiox, ca_pct, ca_on, dosing, cook_loss)
-            ranked.append((R["delivered"] - dE * 1.6, name, dE, R["delivered"]))
-        ranked.sort(reverse=True)
-        st.markdown("### 🏆 Ranking")
-        for _, name, dE, dv in ranked[:5]:
-            st.markdown(
-                f'<div style="display:flex;align-items:center;gap:12px;padding:7px 0;'
-                f'border-bottom:1px solid {THEME["rule"]}">'
-                f'<div style="width:15px;height:15px;border-radius:4px;flex:0 0 auto;'
-                f'background:{PIGMENTS[name]["hue"]};border:1px solid rgba(0,0,0,.12)"></div>'
-                f'<div style="flex:1;min-width:0"><div style="font-size:13px;'
-                f'font-weight:600;color:{THEME["ink"]}">{name}</div>'
-                f'<div style="height:5px;border-radius:3px;margin-top:4px;'
-                f'background:{THEME["rule"]}"><div style="height:5px;border-radius:3px;'
-                f'width:{min(dv,100):.0f}%;background:{PIGMENTS[name]["hue"]}"></div></div></div>'
-                f'<div style="font-family:IBM Plex Mono,monospace;font-size:11px;'
-                f'color:{THEME["muted"]};text-align:right;flex:0 0 auto">'
-                f'ΔE₀₀ {dE:.0f}<br>{dv:.0f}%</div></div>', unsafe_allow_html=True)
-        if ranked[0][3] < 25:
-            st.error(t("❌ Ningún pigmento entrega suficiente con esta dosificación.",
-                       "❌ No pigment delivers enough with this dosing."))
-        elif ranked[0][2] > 15:
-            st.warning(t("⚠️ Ningún componente único cubre el tono. Usar mezcla.",
-                         "⚠️ No single component covers the hue. Use a blend."))
+    # Resultados por pigmento, reutilizados por el optimizador
+    cache = {n: full_result(n, stages, ph_val, antiox, ca_pct, ca_on, dosing, cook_loss)
+             for n in PIGMENTS}
+    alt = suggest_alternative(ref_sub, cache, REF) if dosing else None
+
+    dE_blend = ciede2000(srgb_to_lab(ref_sub), srgb_to_lab(blend_sub))
+    perf_blend = (B["delivered"] / Rref["delivered"] * 100.0) if Rref["delivered"] > 0 else None
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.markdown(result_card(
+            t("REFERENCIA", "REFERENCE"), "Red 40 + Yellow 6", ref_sub, ref_hue,
+            t("Colorantes sintéticos dosificados en el baño de agua. "
+              "Es el objetivo a igualar, no un candidato.",
+              "Synthetic dyes dosed in the water bath. This is the target to match, "
+              "not a candidate."),
+            None, Rref["delivered"], None, THEME["navy2"], t("OBJETIVO", "TARGET")),
+            unsafe_allow_html=True)
+    with c2:
+        st.markdown(result_card(
+            t("TU FORMULACIÓN", "YOUR FORMULATION"),
+            B["parts"][0][0] if B["single"] else t("Mezcla de ", "Blend of ") + f"{len(B['parts'])}",
+            blend_sub, B["hex"],
+            " + ".join(f"{n.split(' (')[0]} {s*100:.0f}%" for n, s, _ in B["parts"]),
+            dE_blend, B["delivered"], perf_blend, THEME["gold"], t("ACTUAL", "CURRENT")),
+            unsafe_allow_html=True)
+    with c3:
+        if alt:
+            same = ({n for n, _ in alt["components"]} ==
+                    {n for n, _, _ in B["parts"]} and abs(alt["dE"] - dE_blend) < 0.15)
+            perf_alt = (alt["delivered"] / Rref["delivered"] * 100.0) if Rref["delivered"] > 0 else None
+            st.markdown(result_card(
+                t("ALTERNATIVA DEL MODELO", "MODEL ALTERNATIVE"),
+                t("Mejor match encontrado", "Best match found"),
+                alt["sub"], alt["hex"],
+                " + ".join(f"{n.split(' (')[0]} {s*100:.0f}%" for n, s in alt["components"]),
+                alt["dE"], alt["delivered"], perf_alt,
+                THEME["ok"] if not same else THEME["muted"],
+                t("YA LA USAS", "ALREADY YOURS") if same else t("SUGERIDA", "SUGGESTED")),
+                unsafe_allow_html=True)
         else:
-            st.success(f"✅ **{ranked[0][1]}** — " + t("candidato principal", "lead candidate"))
+            st.info(t("Activa un punto de aplicación para que el modelo busque alternativas.",
+                      "Enable an application point so the model can search alternatives."))
+
+    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+
+    # Lectura del resultado
+    if dE_blend <= 2.0:
+        st.success(t(f"✅ Tu formulación está en ΔE₀₀ {dE_blend:.1f}: diferencia imperceptible "
+                     "para el consumidor.",
+                     f"✅ Your formulation is at ΔE₀₀ {dE_blend:.1f}: imperceptible to the consumer."))
+    elif dE_blend <= 4.0:
+        st.warning(t(f"⚠️ ΔE₀₀ {dE_blend:.1f}: perceptible en comparación lado a lado, "
+                     "aceptable viendo el producto aislado.",
+                     f"⚠️ ΔE₀₀ {dE_blend:.1f}: perceptible side by side, acceptable in isolation."))
+    else:
+        msg = t(f"❌ ΔE₀₀ {dE_blend:.1f}: diferencia evidente.",
+                f"❌ ΔE₀₀ {dE_blend:.1f}: obvious difference.")
+        if alt and alt["dE"] < dE_blend - 0.5:
+            msg += t(f" El modelo encuentra {alt['dE']:.1f} con "
+                     + " + ".join(f"{n.split(' (')[0]} {s*100:.0f}%" for n, s in alt["components"]) + ".",
+                     f" The model finds {alt['dE']:.1f} with "
+                     + " + ".join(f"{n.split(' (')[0]} {s*100:.0f}%" for n, s in alt["components"]) + ".")
+        st.error(msg)
+
+    if alt:
+        st.caption(t(f"La alternativa se busca entre componentes sueltos, pares y tríos del "
+                     f"catálogo. Se excluyen los que retienen menos de 60% en este proceso: "
+                     f"al destruirse cambian de tono, no solo de intensidad, y el modelo no "
+                     f"simula ese viraje.",
+                     "The alternative is searched across singles, pairs and triples in the "
+                     "catalogue. Components retaining under 60% in this process are excluded: "
+                     "when destroyed they shift hue, not just intensity, and the model does "
+                     "not simulate that shift."))
+    st.caption(t("Umbrales provisionales. El tono de referencia es una aproximación: "
+                 "sustitúyelo por el L*a*b* medido del producto objetivo cuando lo tengas.",
+                 "Provisional thresholds. The reference hue is an approximation: replace it "
+                 "with the measured L*a*b* of the target product when available."))
+
+    # ------------------------------------------------------------------
+    # Exploración libre — replegada para no competir con la comparación
+    # ------------------------------------------------------------------
+    with st.expander(t("Exploración libre por tono", "Free hue exploration")):
+        rc1, rc2 = st.columns([1, 2])
+        with rc1:
+            target = st.color_picker(t("Color objetivo", "Target colour"), ref_hue)
+            st.markdown(f'<div style="background:{target};height:90px;border-radius:9px;'
+                        f'border:1px solid {THEME["rule"]}"></div>', unsafe_allow_html=True)
+            st.caption(t("Ranking de componentes sueltos contra este tono.",
+                         "Ranking of single components against this hue."))
+        with rc2:
+            lab_t = srgb_to_lab(target)
+            ranked = sorted(
+                ((cache[n]["delivered"] - ciede2000(lab_t, srgb_to_lab(p["hue"])) * 1.6,
+                  n, ciede2000(lab_t, srgb_to_lab(p["hue"])), cache[n]["delivered"])
+                 for n, p in PIGMENTS.items()), reverse=True)
+            for _, name, dE, dv in ranked[:6]:
+                st.markdown(
+                    f'<div style="display:flex;align-items:center;gap:12px;padding:6px 0;'
+                    f'border-bottom:1px solid {THEME["rule"]}">'
+                    f'<div style="width:15px;height:15px;border-radius:4px;flex:0 0 auto;'
+                    f'background:{PIGMENTS[name]["hue"]};border:1px solid rgba(0,0,0,.12)"></div>'
+                    f'<div style="flex:1;min-width:0"><div style="font-size:13px;'
+                    f'font-weight:600;color:{THEME["ink"]}">{name}</div>'
+                    f'<div style="height:5px;border-radius:3px;margin-top:4px;'
+                    f'background:{THEME["rule"]}"><div style="height:5px;border-radius:3px;'
+                    f'width:{min(dv,100):.0f}%;background:{PIGMENTS[name]["hue"]}"></div></div></div>'
+                    f'<div style="font-family:IBM Plex Mono,monospace;font-size:11px;'
+                    f'color:{THEME["muted"]};text-align:right;flex:0 0 auto">'
+                    f'ΔE₀₀ {dE:.0f}<br>{dv:.0f}%</div></div>', unsafe_allow_html=True)
 
 st.markdown(
     f'<div style="margin-top:26px;padding-top:14px;border-top:1px solid {THEME["rule"]};'
