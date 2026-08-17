@@ -290,15 +290,22 @@ APP_POINTS = {
 
 # etapa: (nombre, °C, min, O₂, húmeda?, agitación 0-1)
 PRESETS = {
-    "Freddy Hirsch / Sigma — coextruida": [
-        ("Fijado Ca²⁺",  20, 2,  0.8, True,  0.3),
-        ("Cocción agua", 82, 15, 1.0, True,  0.5),
-        ("Horno seco",   70, 20, 1.6, False, 0.0),
-        ("Enfriado agua", 7, 20, 0.9, True,  0.6),
+    t("Cárnico coextruido en alginato", "Alginate co-extruded meat"): [
+        (t("Fijado Ca²⁺", "Ca²⁺ setting"),   20, 2,  0.8, True,  0.3),
+        (t("Cocción en agua", "Water cook"), 82, 15, 1.0, True,  0.5),
+        (t("Horno seco", "Dry oven"),        70, 20, 1.6, False, 0.0),
+        (t("Enfriado en agua", "Water chill"), 7, 20, 0.9, True,  0.6),
     ],
-    "Pasteurización simple": [("Pasteurización", 72, 15, 1.0, True, 0.4)],
-    "Esterilización UHT":    [("UHT", 140, 1, 0.7, True, 0.5)],
-    "Horneado":              [("Horneado", 180, 25, 1.8, False, 0.0)],
+    t("Cárnico en tripa natural", "Natural casing meat"): [
+        (t("Cocción en agua", "Water cook"), 78, 25, 1.0, True,  0.4),
+        (t("Enfriado en agua", "Water chill"), 5, 15, 0.9, True,  0.5),
+    ],
+    t("Pasteurización simple", "Simple pasteurisation"): [
+        (t("Pasteurización", "Pasteurisation"), 72, 15, 1.0, True, 0.4)],
+    t("Esterilización UHT", "UHT sterilisation"): [
+        ("UHT", 140, 1, 0.7, True, 0.5)],
+    t("Horneado", "Baking"): [
+        (t("Horneado", "Baking"), 180, 25, 1.8, False, 0.0)],
 }
 
 ANTIOX = {
@@ -628,16 +635,61 @@ if not stages:
     st.stop()
 
 # ---------------------------------------------------------------- dosificación
-st.sidebar.markdown("--- \n### 🎯 " + t("Dosificación", "Dosing"))
-st.sidebar.caption(t("Varios puntos a la vez, o ninguno.", "Several points at once, or none."))
+POINT_COLOR = {"bath": "#4A90D9", "gel": "#3E9E8F", "meat": "#C1974A"}
+
+st.sidebar.markdown("--- \n### 🎯 " + t("Punto de aplicación", "Application point"))
+st.sidebar.caption(t("**Dónde** se agrega el color en el proceso. No es la receta: "
+                     "eso se define arriba, en Formulación.",
+                     "**Where** the colour is added in the process. Not the recipe: "
+                     "that is set above, in Formulation."))
+
 dosing_raw = {}
 for key, ap in APP_POINTS.items():
-    on = st.sidebar.checkbox(ap["es"] if ES else ap["en"], value=(key == "meat"), key=f"ap_{key}")
+    name = ap["es"] if ES else ap["en"]
+    on = st.sidebar.checkbox(name, value=(key == "meat"), key=f"ap_{key}")
     if on:
-        dosing_raw[key] = st.sidebar.slider("→ % " + t("de la dosis", "of dose"),
-                                            0, 100, 100, 5, key=f"sh_{key}")
+        dosing_raw[key] = st.sidebar.slider(
+            t(f"Reparto — {name}", f"Split — {name}"), 0, 100, 100, 5, key=f"sh_{key}")
+
 tot = sum(dosing_raw.values())
 dosing = {k: v / tot for k, v in dosing_raw.items()} if tot > 0 else {}
+
+# Resumen visual: el slider es un peso relativo, no un porcentaje absoluto.
+# Sin esto, dos sliders en 100 parecen 200% cuando en realidad son 50/50.
+if dosing:
+    if len(dosing) == 1:
+        only = list(dosing)[0]
+        st.sidebar.markdown(
+            f'<div style="background:{POINT_COLOR[only]};height:9px;border-radius:5px;'
+            f'margin:8px 0 6px"></div>'
+            f'<div style="font-size:11.5px;color:#AFC0D0">'
+            f'{t("Todo el color en", "All colour in")} '
+            f'<b style="color:#F2F5F8">{APP_POINTS[only]["es"] if ES else APP_POINTS[only]["en"]}</b>'
+            f'</div>', unsafe_allow_html=True)
+    else:
+        bar = "".join(
+            f'<div style="width:{v*100:.1f}%;background:{POINT_COLOR[k]};height:100%"></div>'
+            for k, v in dosing.items())
+        rows = "".join(
+            f'<div style="display:flex;align-items:center;gap:7px;margin-top:4px">'
+            f'<span style="width:9px;height:9px;border-radius:2px;flex:0 0 auto;'
+            f'background:{POINT_COLOR[k]}"></span>'
+            f'<span style="flex:1;font-size:11.5px;color:#AFC0D0">'
+            f'{APP_POINTS[k]["es"] if ES else APP_POINTS[k]["en"]}</span>'
+            f'<b style="font-size:11.5px;color:#F2F5F8">{v*100:.0f}%</b></div>'
+            for k, v in dosing.items())
+        st.sidebar.markdown(
+            f'<div style="display:flex;height:9px;border-radius:5px;overflow:hidden;'
+            f'margin:8px 0 2px">{bar}</div>{rows}'
+            f'<div style="font-size:10.5px;color:#8FA3B5;margin-top:7px;line-height:1.4">'
+            f'{t("Los sliders son pesos relativos: se normalizan sobre su suma "
+                 f"({tot}%). Estos son los valores efectivos.",
+                 f"Sliders are relative weights, normalised over their sum ({tot}%). "
+                 "These are the effective values.")}</div>',
+            unsafe_allow_html=True)
+else:
+    st.sidebar.warning(t("Ningún punto activo: el producto no recibe color.",
+                         "No active point: the product receives no colour."))
 
 # ---------------------------------------------------------------- condiciones
 st.sidebar.markdown("--- \n### 🔬 " + t("Condiciones", "Conditions"))
@@ -664,7 +716,8 @@ st.markdown(
     f'<div><h1>{t("Inteligencia de Color", "Colour Intelligence")}</h1>'
     f'<div class="sub">{t("Simulador de proceso y anaquel", "Process &amp; shelf life simulator")}</div>'
     f'</div></div>'
-    f'<div class="rb-chip">{preset}</div></div>', unsafe_allow_html=True)
+    f'<div class="rb-chip">{preset} &middot; {sum(s[2] for s in stages):.0f} min</div>'
+    f'</div>', unsafe_allow_html=True)
 
 if B is None:
     st.warning(t("No hay componentes activos. Enciende al menos uno en la barra lateral.",
