@@ -378,16 +378,35 @@ for i, (label, tc, mn, o2, wet, agit) in enumerate(raw_stages):
     active_flags.append(st.sidebar.checkbox(f"{label} · {tc}°C · {mn}min",
                                             value=True, key=f"stg_{preset}_{i}"))
 
-with st.sidebar.expander(t("Editar etapas", "Edit stages")):
-    df = pd.DataFrame(
-        [dict(Etapa=s[0], C=s[1], min=s[2], O2=s[3], Húmeda=s[4], Agit=s[5])
-         for s, a in zip(raw_stages, active_flags) if a])
-    if not df.empty:
-        df = st.data_editor(df, hide_index=True, num_rows="fixed",
-                            key=f"ed_{preset}", width="stretch")
+# Nombres de columna ASCII y sin colisiones con metodos de tupla,
+# para poder leerlos de forma segura sin depender de itertuples().
+COLS = ["Etapa", "TempC", "Minutos", "O2", "Humeda", "Agitacion"]
 
-stages = [(r.Etapa, float(r.C), float(r["min"]), float(r.O2), bool(r.Húmeda), float(r.Agit))
-          for r in df.itertuples()] if not df.empty else []
+df = pd.DataFrame(
+    [dict(zip(COLS, s)) for s, a in zip(raw_stages, active_flags) if a],
+    columns=COLS)
+
+with st.sidebar.expander(t("Editar etapas", "Edit stages")):
+    if df.empty:
+        st.caption(t("Ninguna etapa activa.", "No active stage."))
+    else:
+        df = st.data_editor(df, hide_index=True, num_rows="fixed",
+                            key=f"ed_{preset}", use_container_width=True)
+
+stages = []
+for row in df.to_dict("records"):
+    try:
+        vals = [float(row[c]) for c in ["TempC", "Minutos", "O2", "Agitacion"]]
+        if any(np.isnan(v) for v in vals):
+            raise ValueError("NaN")
+        tc, mn, o2, agit = vals
+        stages.append((str(row["Etapa"]), tc, max(mn, 0.0),
+                       max(o2, 0.0), bool(row["Humeda"]),
+                       min(max(agit, 0.0), 1.0)))
+    except (TypeError, ValueError):
+        st.sidebar.warning(
+            t(f"Etapa '{row.get('Etapa', '?')}' tiene un valor invalido y fue omitida.",
+              f"Stage '{row.get('Etapa', '?')}' has an invalid value and was skipped."))
 
 if not stages:
     st.sidebar.error(t("Sin etapas activas.", "No active stages."))
@@ -495,7 +514,7 @@ with tab_p:
         kpis(p2, R2, "B")
 
     results = [(p1, R1, "solid")] + ([(p2, R2, "dash")] if compare_on else [])
-    st.plotly_chart(process_figure(results), width="stretch")
+    st.plotly_chart(process_figure(results), use_container_width=True)
 
     c1, c2 = st.columns([1.4, 1])
     with c1:
@@ -507,7 +526,7 @@ with tab_p:
                  t("Captación", "Uptake"): f"{v['uptake']*100:.0f}%",
                  t("Retención", "Retention"): f"{v['retention']*100:.0f}%",
                  t("Aporta", "Contributes"): f"{v['delivered']:.1f}%"}
-                for k, v in R1["breakdown"].items()]), hide_index=True, width="stretch")
+                for k, v in R1["breakdown"].items()]), hide_index=True, use_container_width=True)
         contact = aqueous_contact(stages, "meat")
         st.caption(t(f"Contacto acuoso efectivo calculado: {contact:.0f} min-equivalentes. "
                      "Se deriva de las etapas húmedas activas, su temperatura y agitación.",
@@ -553,7 +572,7 @@ with tab_s:
                        xaxis=dict(title=t("Meses", "Months"), gridcolor="#EEE"),
                        yaxis=dict(title="%", range=[-2, 105], gridcolor="#EEE"),
                        legend=dict(orientation="h", y=1.12, x=0))
-    st.plotly_chart(fig2, width="stretch")
+    st.plotly_chart(fig2, use_container_width=True)
 
     if PIGMENTS[p1]["light"] > 0.12 and uv_idx == 0 and ANTIOX[antiox]["light"] > 0.9:
         st.warning(t("⚠️ Pigmento fotosensible, empaque transparente y sin antioxidante efectivo.",
@@ -610,7 +629,7 @@ with tab_b:
                             unsafe_allow_html=True)
             with b2:
                 st.dataframe(pd.DataFrame(rows).drop(columns=["_d"]),
-                             hide_index=True, width="stretch")
+                             hide_index=True, use_container_width=True)
             worst = min(rows, key=lambda r: r["_d"])
             st.info(t("Componente limitante: ", "Limiting component: ") +
                     f"**{worst[t('Pigmento','Pigment')]}** ({worst['_d']:.0f}%)")
