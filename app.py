@@ -233,22 +233,28 @@ def t(es, en):
 # ca ...... retención tras el baño de calcio (1.00 = indiferente)
 # light ... fotodegradación (mes⁻¹) sin filtro UV
 # bind .... fijación iónica a proteína cárnica (aniónicos). None = no aplica
+# ts ...... fuerza colorante relativa del PREPARADO COMERCIAL, índice con el
+#           blend Red 40 + Yellow 6 = 100. Refleja color por gramo de producto
+#           tal como se compra, no por gramo de pigmento puro: por eso una
+#           oleorresina de páprika al 40.000 CU vale ~12 y el carmín al 50% de
+#           ácido carmínico vale ~35. Son ordenes de magnitud, no valores
+#           certificados — sustituir por la ficha técnica real de cada SKU.
 # ==========================================================================
 PIGMENTS = {
-    "Paprika (WD)":        dict(k85=.0030, pol="oil",   o2=1.20, ca=1.00, light=.075, bind=None, hue="#E63900", ph=(2, 9), pen=1.0),
-    "Paprika (oil)":       dict(k85=.0026, pol="oil",   o2=1.10, ca=1.00, light=.070, bind=None, hue="#DA3A0E", ph=(2, 9), pen=1.0),
-    "Lycopene":            dict(k85=.0042, pol="oil",   o2=1.85, ca=1.00, light=.140, bind=None, hue="#C6362B", ph=(2, 9), pen=1.0),
-    "Bixin (annatto oil)": dict(k85=.0022, pol="oil",   o2=1.15, ca=1.00, light=.090, bind=None, hue="#E28313", ph=(2, 9), pen=1.0),
-    "Norbixin (annatto)":  dict(k85=.0050, pol="water", o2=1.10, ca=0.15, light=.095, bind=None, hue="#D2691E", ph=(4.5, 9), pen=6.0),
-    "Beta-carotene":       dict(k85=.0010, pol="oil",   o2=1.45, ca=1.00, light=.110, bind=None, hue="#FFB300", ph=(2, 9), pen=1.0),
-    "β-apo-8'-carotenal":  dict(k85=.0016, pol="oil",   o2=1.40, ca=1.00, light=.105, bind=None, hue="#E8541F", ph=(2, 9), pen=1.0),
-    "Caramel colour":      dict(k85=.0002, pol="water", o2=0.10, ca=1.00, light=.010, bind=None, hue="#7A4A21", ph=(2, 9), pen=1.0),
-    "Carmine":             dict(k85=.0008, pol="water", o2=0.30, ca=0.75, light=.030, bind=0.93, hue="#8E1F2F", ph=(3.5, 8), pen=2.5),
-    "Red 40 + Yellow 6":   dict(k85=.0003, pol="water", o2=0.15, ca=1.00, light=.020, bind=0.95, hue="#D62828", ph=(2, 9), pen=1.0),
-    "Curcumin":            dict(k85=.0100, pol="both",  o2=1.00, ca=1.00, light=.320, bind=None, hue="#FFEA00", ph=(2, 7.5), pen=2.0),
-    "Red Beet":            dict(k85=.0400, pol="water", o2=1.30, ca=1.00, light=.180, bind=None, hue="#C71585", ph=(4, 6), pen=2.0),
-    "Natural Chlorophyll": dict(k85=.0150, pol="oil",   o2=1.20, ca=0.85, light=.250, bind=None, hue="#228B22", ph=(6, 9), pen=3.0),
-    "Spirulina":           dict(k85=.1500, pol="water", o2=1.60, ca=1.00, light=.400, bind=None, hue="#4169E1", ph=(5.5, 7.5), pen=3.0),
+    "Paprika (WD)":        dict(k85=.0030, pol="oil",   o2=1.20, ca=1.00, light=.075, bind=None, ts=12, hue="#E63900", ph=(2, 9), pen=1.0),
+    "Paprika (oil)":       dict(k85=.0026, pol="oil",   o2=1.10, ca=1.00, light=.070, bind=None, ts=28, hue="#DA3A0E", ph=(2, 9), pen=1.0),
+    "Lycopene":            dict(k85=.0042, pol="oil",   o2=1.85, ca=1.00, light=.140, bind=None, ts=8, hue="#C6362B", ph=(2, 9), pen=1.0),
+    "Bixin (annatto oil)": dict(k85=.0022, pol="oil",   o2=1.15, ca=1.00, light=.090, bind=None, ts=10, hue="#E28313", ph=(2, 9), pen=1.0),
+    "Norbixin (annatto)":  dict(k85=.0050, pol="water", o2=1.10, ca=0.15, light=.095, bind=None, ts=9, hue="#D2691E", ph=(4.5, 9), pen=6.0),
+    "Beta-carotene":       dict(k85=.0010, pol="oil",   o2=1.45, ca=1.00, light=.110, bind=None, ts=20, hue="#FFB300", ph=(2, 9), pen=1.0),
+    "β-apo-8'-carotenal":  dict(k85=.0016, pol="oil",   o2=1.40, ca=1.00, light=.105, bind=None, ts=22, hue="#E8541F", ph=(2, 9), pen=1.0),
+    "Caramel colour":      dict(k85=.0002, pol="water", o2=0.10, ca=1.00, light=.010, bind=None, ts=3, hue="#7A4A21", ph=(2, 9), pen=1.0),
+    "Carmine":             dict(k85=.0008, pol="water", o2=0.30, ca=0.75, light=.030, bind=0.93, ts=35, hue="#8E1F2F", ph=(3.5, 8), pen=2.5),
+    "Red 40 + Yellow 6":   dict(k85=.0003, pol="water", o2=0.15, ca=1.00, light=.020, bind=0.95, ts=100, hue="#D62828", ph=(2, 9), pen=1.0),
+    "Curcumin":            dict(k85=.0100, pol="both",  o2=1.00, ca=1.00, light=.320, bind=None, ts=40, hue="#FFEA00", ph=(2, 7.5), pen=2.0),
+    "Red Beet":            dict(k85=.0400, pol="water", o2=1.30, ca=1.00, light=.180, bind=None, ts=4, hue="#C71585", ph=(4, 6), pen=2.0),
+    "Natural Chlorophyll": dict(k85=.0150, pol="oil",   o2=1.20, ca=0.85, light=.250, bind=None, ts=6, hue="#228B22", ph=(6, 9), pen=3.0),
+    "Spirulina":           dict(k85=.1500, pol="water", o2=1.60, ca=1.00, light=.400, bind=None, ts=5, hue="#4169E1", ph=(5.5, 7.5), pen=3.0),
 }
 
 # ==========================================================================
@@ -624,6 +630,28 @@ def suggest_alternative(ref_sub, cache, exclude_ref, min_delivered=25.0, min_che
     return best[0]
 
 
+
+def dose_estimate(components, cache, ref_name, ref_dose_ppm, ref_dosing_result):
+    """
+    Dosis requerida para igualar el color que entrega el sistema de referencia.
+
+    Se ancla al incumbente en vez de calcular en absoluto, porque la fuerza
+    colorante absoluta depende del SKU y del método de medición. Igualando
+    color entregado:
+
+        D_total · Σ(share_i · TS_i · entrega_i) = dosis_ref · TS_ref · entrega_ref
+
+    Devuelve None si la formulación no entrega color (denominador nulo).
+    """
+    denom = sum(s * PIGMENTS[n]["ts"] * cache[n]["delivered"] for n, s in components)
+    if denom <= 0:
+        return None
+    numer = ref_dose_ppm * PIGMENTS[ref_name]["ts"] * ref_dosing_result["delivered"]
+    total = numer / denom
+    return dict(total_ppm=total,
+                rows=[(n, s, total * s) for n, s in components])
+
+
 def result_card(title, subtitle, sub_hex, pure_hex, composition,
                 dE, delivered, perf, accent, tag=""):
     """Tarjeta comparativa: muestra sobre producto + tono puro + métricas."""
@@ -830,9 +858,10 @@ if B is None:
                  "No active components. Switch on at least one in the sidebar."))
     st.stop()
 
-tab_p, tab_s, tab_b, tab_r = st.tabs([
+tab_p, tab_s, tab_b, tab_d, tab_r = st.tabs([
     t("🔥 Proceso", "🔥 Process"), t("📅 Anaquel", "📅 Shelf life"),
-    t("🧪 Formulación", "🧪 Formulation"), t("💡 Recomendador", "💡 Recommender")])
+    t("🧪 Formulación", "🧪 Formulation"), t("⚖️ Dosis", "⚖️ Dosage"),
+    t("💡 Recomendador", "💡 Recommender")])
 
 # ---------------------------------------------------------------- proceso
 with tab_p:
@@ -994,6 +1023,134 @@ with tab_b:
                          unsafe_allow_html=True)
 
 # ---------------------------------------------------------------- recomendador
+# ---------------------------------------------------------------- dosis
+with tab_d:
+    st.subheader("⚖️ " + t("Dosis estimada y costo en uso", "Estimated dose and cost in use"))
+    st.caption(t("La dosis se calcula por equivalencia con el sistema sintético: cuánto "
+                 "colorante natural hace falta para entregar el mismo color que el "
+                 "incumbente entrega en este proceso.",
+                 "Dose is computed by equivalence with the synthetic system: how much natural "
+                 "colour is needed to deliver the same colour the incumbent delivers in this "
+                 "process."))
+
+    REF_D = "Red 40 + Yellow 6"
+    d1, d2, d3 = st.columns(3)
+    ref_dose = d1.number_input(t("Dosis del sintético (ppm)", "Synthetic dose (ppm)"),
+                               1, 2000, 60, 5,
+                               help=t("Sobre producto terminado. Pídelo al cliente.",
+                                      "On finished product. Ask the customer."))
+    ref_point = d2.selectbox(t("Dosificado en", "Dosed in"), list(APP_POINTS.keys()),
+                             format_func=lambda k: APP_POINTS[k]["es"] if ES else APP_POINTS[k]["en"],
+                             index=0)
+    batch = d3.number_input(t("Lote (kg)", "Batch (kg)"), 1, 100000, 1000, 100)
+
+    Rref_d = full_result(REF_D, stages, ph_val, antiox, ca_pct, ca_on,
+                         {ref_point: 1.0}, cook_loss)
+    cache_d = {n: full_result(n, stages, ph_val, antiox, ca_pct, ca_on, dosing, cook_loss)
+               for n in {c[0] for c in [(p[0], 0) for p in B["parts"]]}}
+    est = dose_estimate([(n, s) for n, s, _ in B["parts"]], cache_d, REF_D, ref_dose, Rref_d)
+
+    # Techo práctico: por encima de ~0.5% sobre producto no hay dosis que sea
+    # formulable ni sensorialmente neutra. El cálculo sigue siendo aritméticamente
+    # correcto, pero devolver "48 000 ppm" invita a leerlo como una dosis real.
+    MAX_PPM = 5000.0
+
+    if est is None:
+        st.warning(t("La formulación no entrega color en esta configuración: no hay dosis "
+                     "que iguale la referencia.",
+                     "The formulation delivers no colour in this configuration: no dose can "
+                     "match the reference."))
+    elif est["total_ppm"] > MAX_PPM:
+        st.error(t(f"❌ Igualar la referencia exigiría {est['total_ppm']:,.0f} ppm "
+                   f"({est['total_ppm']/10000:.2f}% sobre producto). No es formulable: "
+                   "por encima de ~0,5% el colorante deja de ser un aditivo y se vuelve un "
+                   "ingrediente, con impacto en sabor, textura y costo. Esta configuración "
+                   "no tiene solución por dosis — hay que cambiar el punto de aplicación.",
+                   f"❌ Matching the reference would require {est['total_ppm']:,.0f} ppm "
+                   f"({est['total_ppm']/10000:.2f}% on product). Not formulable: above ~0.5% "
+                   "the colour stops being an additive and becomes an ingredient, with impact "
+                   "on flavour, texture and cost. This configuration has no dose-based "
+                   "solution — the application point must change.").replace(",", " "))
+    else:
+        ratio = est["total_ppm"] / ref_dose
+        st.markdown('<div class="rb-kpis">'
+                    + kpi(t("Dosis total", "Total dose"), f"{est['total_ppm']:.0f} ppm",
+                          t("sobre producto terminado", "on finished product"), hero=True)
+                    + kpi(t("Por lote", "Per batch"),
+                          f"{est['total_ppm']*batch/1000:.0f} g",
+                          f"{batch:,} kg".replace(",", " "))
+                    + kpi(t("Factor vs. sintético", "Factor vs. synthetic"), f"{ratio:.1f}×",
+                          t("gramos por gramo sustituido", "grams per gram replaced"))
+                    + '</div><div style="height:16px"></div>', unsafe_allow_html=True)
+
+        st.markdown("**" + t("Desglose por componente", "Breakdown by component") + "**")
+        table = pd.DataFrame([
+            {t("Componente", "Component"): n,
+             t("Reparto", "Share"): f"{s*100:.0f}%",
+             t("Fuerza", "Strength"): PIGMENTS[n]["ts"],
+             t("Entrega", "Delivery"): f"{cache_d[n]['delivered']:.0f}%",
+             t("Dosis (ppm)", "Dose (ppm)"): round(ppm, 1),
+             t("Por lote (g)", "Per batch (g)"): round(ppm * batch / 1000, 1),
+             t("Precio (USD/kg)", "Price (USD/kg)"): 0.0}
+            for n, s, ppm in est["rows"]])
+
+        edited = st.data_editor(
+            table, hide_index=True, use_container_width=True, key="dose_tbl",
+            disabled=[c for c in table.columns if c != t("Precio (USD/kg)", "Price (USD/kg)")])
+
+        price_col = t("Precio (USD/kg)", "Price (USD/kg)")
+        prices = [float(p or 0) for p in edited[price_col]]
+        if any(p > 0 for p in prices):
+            cost_t = sum(ppm * p / 1000.0 for (_, _, ppm), p in zip(est["rows"], prices))
+            e1, e2 = st.columns(2)
+            ref_price = e1.number_input(t("Precio del sintético (USD/kg)",
+                                          "Synthetic price (USD/kg)"), 0.0, 500.0, 0.0, 1.0)
+            ref_cost_t = ref_dose * ref_price / 1000.0
+            with e2:
+                st.markdown('<div class="rb-kpis" style="grid-template-columns:1fr 1fr">'
+                            + kpi(t("Costo natural", "Natural cost"),
+                                  f"${cost_t:,.2f}".replace(",", " "),
+                                  t("por tonelada de producto", "per tonne of product"), hero=True)
+                            + kpi(t("Costo sintético", "Synthetic cost"),
+                                  f"${ref_cost_t:,.2f}".replace(",", " ") if ref_price else "—",
+                                  t("por tonelada", "per tonne"))
+                            + '</div>', unsafe_allow_html=True)
+            if ref_price > 0 and ref_cost_t > 0:
+                st.info(t(f"Sobrecosto de {cost_t/ref_cost_t:.1f}× frente al sintético, "
+                          f"o {cost_t - ref_cost_t:+,.2f} USD por tonelada.",
+                          f"Cost multiple of {cost_t/ref_cost_t:.1f}× versus synthetic, "
+                          f"or {cost_t - ref_cost_t:+,.2f} USD per tonne.").replace(",", " "))
+        else:
+            st.caption(t("Escribe los precios en la última columna para calcular costo en uso.",
+                         "Enter prices in the last column to compute cost in use."))
+
+        # El punto de aplicación mueve la dosis tanto como el pigmento
+        if dosing:
+            alt_pts = {}
+            for pt in APP_POINTS:
+                c_alt = {n: full_result(n, stages, ph_val, antiox, ca_pct, ca_on,
+                                        {pt: 1.0}, cook_loss) for n, _, _ in B["parts"]}
+                e_alt = dose_estimate([(n, s) for n, s, _ in B["parts"]],
+                                      c_alt, REF_D, ref_dose, Rref_d)
+                alt_pts[pt] = e_alt["total_ppm"] if e_alt else None
+            st.markdown("**" + t("Misma formulación, distinto punto de aplicación",
+                                 "Same formulation, different application point") + "**")
+            st.dataframe(pd.DataFrame([
+                {t("Punto", "Point"): APP_POINTS[k]["es"] if ES else APP_POINTS[k]["en"],
+                 t("Dosis requerida", "Required dose"):
+                     (t("inviable", "unviable") if v and v > MAX_PPM
+                      else f"{v:,.0f} ppm".replace(",", " ") if v else "—"),
+                 t("Veces vs. masa", "Times vs. meat"):
+                     f"{v/alt_pts['meat']:.1f}×" if v and alt_pts.get("meat") else "—"}
+                for k, v in alt_pts.items()]), hide_index=True, use_container_width=True)
+
+    st.caption(t("Los índices de fuerza colorante son órdenes de magnitud, no valores "
+                 "certificados. Sustitúyelos por la ficha técnica del SKU real antes de "
+                 "cotizar. Toda dosis debe confirmarse en banco.",
+                 "Tinctorial strength indices are order-of-magnitude figures, not certified "
+                 "values. Replace them with the real SKU datasheet before quoting. Any dose "
+                 "must be confirmed at bench."))
+
 with tab_r:
     REF = "Red 40 + Yellow 6"
     Rref = full_result(REF, stages, ph_val, antiox, ca_pct, ca_on, {"bath": 1.0}, cook_loss)
