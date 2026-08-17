@@ -265,6 +265,95 @@ def shelf_curve(name, months, uv_idx, storage_c, ax):
     return m, 100.0 * np.exp(-k * m)
 
 
+
+# ==========================================================================
+# COLORIMETRÍA — sRGB → CIELAB y CIEDE2000
+# ==========================================================================
+SUBSTRATE = "#8C6A5D"   # carne emulsionada cocida: fondo gris-pardo, no blanco
+
+
+def srgb_to_lab(hex_color):
+    r, g, b = mcolors.to_rgb(hex_color)
+
+    def lin(c):
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = lin(r), lin(g), lin(b)
+    x = r * .4124564 + g * .3575761 + b * .1804375
+    y = r * .2126729 + g * .7151522 + b * .0721750
+    z = r * .0193339 + g * .1191920 + b * .9503041
+    xn, yn, zn = .95047, 1.0, 1.08883
+
+    def f(u):
+        return u ** (1 / 3) if u > .008856 else (7.787 * u + 16 / 116)
+
+    fx, fy, fz = f(x / xn), f(y / yn), f(z / zn)
+    return 116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)
+
+
+def ciede2000(lab1, lab2):
+    L1, a1, b1 = lab1
+    L2, a2, b2 = lab2
+    kL = kC = kH = 1.0
+    C1, C2 = np.hypot(a1, b1), np.hypot(a2, b2)
+    Cb = (C1 + C2) / 2
+    G = 0.5 * (1 - np.sqrt(Cb ** 7 / (Cb ** 7 + 25 ** 7))) if Cb > 0 else 0.5
+    a1p, a2p = (1 + G) * a1, (1 + G) * a2
+    C1p, C2p = np.hypot(a1p, b1), np.hypot(a2p, b2)
+    h1p = np.degrees(np.arctan2(b1, a1p)) % 360 if (a1p or b1) else 0.0
+    h2p = np.degrees(np.arctan2(b2, a2p)) % 360 if (a2p or b2) else 0.0
+
+    dLp = L2 - L1
+    dCp = C2p - C1p
+    if C1p * C2p == 0:
+        dhp = 0.0
+    elif abs(h2p - h1p) <= 180:
+        dhp = h2p - h1p
+    else:
+        dhp = h2p - h1p - 360 if h2p > h1p else h2p - h1p + 360
+    dHp = 2 * np.sqrt(C1p * C2p) * np.sin(np.radians(dhp) / 2)
+
+    Lbp = (L1 + L2) / 2
+    Cbp = (C1p + C2p) / 2
+    if C1p * C2p == 0:
+        hbp = h1p + h2p
+    elif abs(h1p - h2p) <= 180:
+        hbp = (h1p + h2p) / 2
+    elif h1p + h2p < 360:
+        hbp = (h1p + h2p + 360) / 2
+    else:
+        hbp = (h1p + h2p - 360) / 2
+
+    T = (1 - 0.17 * np.cos(np.radians(hbp - 30)) + 0.24 * np.cos(np.radians(2 * hbp))
+         + 0.32 * np.cos(np.radians(3 * hbp + 6)) - 0.20 * np.cos(np.radians(4 * hbp - 63)))
+    dTheta = 30 * np.exp(-(((hbp - 275) / 25) ** 2))
+    Rc = 2 * np.sqrt(Cbp ** 7 / (Cbp ** 7 + 25 ** 7)) if Cbp > 0 else 0.0
+    Sl = 1 + (0.015 * (Lbp - 50) ** 2) / np.sqrt(20 + (Lbp - 50) ** 2)
+    Sc = 1 + 0.045 * Cbp
+    Sh = 1 + 0.015 * Cbp * T
+    Rt = -np.sin(np.radians(2 * dTheta)) * Rc
+
+    return float(np.sqrt((dLp / (kL * Sl)) ** 2 + (dCp / (kC * Sc)) ** 2 +
+                         (dHp / (kH * Sh)) ** 2 +
+                         Rt * (dCp / (kC * Sc)) * (dHp / (kH * Sh))))
+
+
+def on_substrate(hex_color, delivered_pct, substrate=SUBSTRATE):
+    """Cómo se ve ese tono realmente sobre carne cocida, a la intensidad entregada."""
+    alpha = min(max(delivered_pct / 100.0, 0.0), 1.0)
+    fg = np.array(mcolors.to_rgb(hex_color))
+    bg = np.array(mcolors.to_rgb(substrate))
+    return mcolors.to_hex(np.clip(bg * (1 - alpha) + fg * alpha, 0, 1))
+
+
+def swatch(hex_color, label, sub=""):
+    return (f'<div style="text-align:center">'
+            f'<div style="background:{hex_color};height:86px;border-radius:10px;'
+            f'border:1px solid #ccc"></div>'
+            f'<div style="font-size:12px;margin-top:6px"><b>{label}</b></div>'
+            f'<div style="font-size:11px;color:#777">{sub}</div></div>')
+
+
 # ==========================================================================
 # BARRA LATERAL
 # ==========================================================================
@@ -476,18 +565,24 @@ with tab_b:
     st.caption(t("Hasta 5 componentes, cada uno activable. Tono indicativo por mezcla ponderada.",
                  "Up to 5 components, each toggleable. Indicative hue by weighted mixing."))
 
-    defaults = ["Paprika (WD)", "Lycopene", "Caramel colour", "Bixin (annatto oil)", "β-apo-8'-carotenal"]
+    defaults = ["Paprika (WD)", "Lycopene", "Bixin (annatto oil)",
+                "Caramel colour", "\u03b2-apo-8'-carotenal"]
+    st.caption(t("Arranque sugerido: el eje rojo lo sostiene el licopeno. Mezclas "
+                 "dominadas por p\u00e1prika resultan demasiado naranjas frente a la referencia.",
+                 "Suggested start: lycopene carries the red axis. Paprika-dominant blends "
+                 "come out too orange against the reference."))
     slots, cols = [], st.columns(5)
     for i in range(5):
         with cols[i]:
-            on = st.toggle(f"#{i+1}", value=(i < 3), key=f"tg_{i}")
-            pig = st.selectbox("", pig_list, index=pig_list.index(defaults[i]),
-                               key=f"bp_{i}", label_visibility="collapsed", disabled=not on)
-            dose = st.slider("%", 0, 100, 40 if i < 3 else 20, 5,
+            on = st.toggle(f"#{i+1}", value=(i < 4), key=f"tg_{i}")
+            pig = st.selectbox(t("Componente", "Component"), pig_list,
+                               index=pig_list.index(defaults[i]), key=f"bp_{i}")
+            dose = st.slider("%", 0, 100, [20, 60, 5, 15, 10][i], 5,
                              key=f"bd_{i}", disabled=not on)
             if on and dose > 0:
                 slots.append((pig, dose))
 
+    st.session_state["blend"] = None
     if slots:
         total = sum(d for _, d in slots)
         rgb, weight, rows = np.zeros(3), 0.0, []
@@ -499,16 +594,20 @@ with tab_b:
             weight += eff
             rows.append({t("Pigmento", "Pigment"): name,
                          t("Dosis", "Dose"): f"{w*100:.0f}%",
-                         t("Química", "Chemical"): f"{R['chem']:.0f}%",
+                         t("Qu\u00edmica", "Chemical"): f"{R['chem']:.0f}%",
                          t("Entregado", "Delivered"): f"{R['delivered']:.0f}%",
                          "_d": R["delivered"]})
         if weight > 0:
             hexm = mcolors.to_hex(np.clip(rgb / weight, 0, 1))
+            st.session_state["blend"] = dict(
+                hex=hexm, delivered=weight * 100.0,
+                names=[n for n, _ in slots],
+                shares=[d / total for _, d in slots])
             b1, b2 = st.columns([1, 2.2])
             with b1:
-                st.markdown(f'<div style="background:{hexm};height:120px;border-radius:10px;'
-                            f'border:1px solid #ccc;"></div>', unsafe_allow_html=True)
-                st.caption(f"{hexm} · {t('entrega', 'delivery')} {weight*100:.0f}%")
+                st.markdown(swatch(hexm, t("Mezcla", "Blend"),
+                                   f"{hexm} \u00b7 {weight*100:.0f}%"),
+                            unsafe_allow_html=True)
             with b2:
                 st.dataframe(pd.DataFrame(rows).drop(columns=["_d"]),
                              hide_index=True, width="stretch")
@@ -518,41 +617,123 @@ with tab_b:
     else:
         st.info(t("Activa al menos un componente.", "Enable at least one component."))
 
-# ---------------------------------------------------------------- recomendador
 with tab_r:
-    st.subheader("🎯 " + t("Búsqueda por tono", "Target hue search"))
+    # ------------------------------------------------------------------
+    # BLOQUE 1 — Referencia artificial vs. mezcla propuesta
+    # ------------------------------------------------------------------
+    st.subheader("\u2696\ufe0f " + t("Referencia artificial vs. propuesta natural",
+                                      "Artificial reference vs. natural proposal"))
+
+    REF = "Red 40 + Yellow 6"
+    ref_dosing = {"bath": 1.0}     # como lo hacen hoy: color en el agua
+    Rref = full_result(REF, stages, ph_val, antiox, ca_pct, ca_on, ref_dosing, cook_loss)
+    ref_hue = PIGMENTS[REF]["hue"]
+    ref_sub = on_substrate(ref_hue, Rref["delivered"])
+
+    blend = st.session_state.get("blend")
+
+    r1, r2, r3 = st.columns([1, 1, 1.3])
+    with r1:
+        st.markdown("**" + t("REFERENCIA", "REFERENCE") + "**")
+        st.markdown(swatch(ref_hue, "Red 40 + Yellow 6", t("tono puro", "pure hue")),
+                    unsafe_allow_html=True)
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+        st.markdown(swatch(ref_sub, t("Sobre producto", "On product"),
+                           t("entrega ", "delivery ") + f"{Rref['delivered']:.0f}%"),
+                    unsafe_allow_html=True)
+        st.caption(t("Dosificado en el ba\u00f1o de agua, como el proceso actual.",
+                     "Dosed in the water bath, as in the current process."))
+
+    with r2:
+        st.markdown("**" + t("PROPUESTA", "PROPOSAL") + "**")
+        if blend:
+            blend_sub = on_substrate(blend["hex"], blend["delivered"])
+            st.markdown(swatch(blend["hex"], t("Mezcla natural", "Natural blend"),
+                               t("tono puro", "pure hue")), unsafe_allow_html=True)
+            st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+            st.markdown(swatch(blend_sub, t("Sobre producto", "On product"),
+                               t("entrega ", "delivery ") + f"{blend['delivered']:.0f}%"),
+                        unsafe_allow_html=True)
+            st.caption(" + ".join(
+                f"{n.split(' (')[0]} {s*100:.0f}%"
+                for n, s in zip(blend["names"], blend["shares"])))
+        else:
+            st.info(t("Arma una mezcla en la pesta\u00f1a Mezclas.",
+                      "Build a blend in the Blends tab."))
+
+    with r3:
+        st.markdown("**" + t("DESEMPE\u00d1O", "PERFORMANCE") + "**")
+        if blend:
+            blend_sub = on_substrate(blend["hex"], blend["delivered"])
+            dE_pure = ciede2000(srgb_to_lab(ref_hue), srgb_to_lab(blend["hex"]))
+            dE_prod = ciede2000(srgb_to_lab(ref_sub), srgb_to_lab(blend_sub))
+            perf = (blend["delivered"] / Rref["delivered"] * 100.0) if Rref["delivered"] > 0 else 0.0
+
+            m1, m2 = st.columns(2)
+            m1.metric("\u0394E\u2080\u2080 " + t("tono", "hue"), f"{dE_pure:.1f}",
+                      help=t("Diferencia de tono puro, sin considerar intensidad",
+                             "Pure hue difference, intensity aside"))
+            m2.metric("\u0394E\u2080\u2080 " + t("producto", "product"), f"{dE_prod:.1f}",
+                      help=t("Diferencia como se ve sobre la carne",
+                             "Difference as seen on the meat"))
+            st.metric(t("Desempe\u00f1o vs. referencia", "Performance vs. reference"),
+                      f"{perf:.0f}%",
+                      delta=f"{blend['delivered'] - Rref['delivered']:+.0f} pts "
+                            + t("de entrega", "of delivery"))
+
+            if dE_prod <= 2.0:
+                st.success(t("\u2705 Diferencia imperceptible para el consumidor (\u0394E\u2080\u2080 \u2264 2).",
+                             "\u2705 Imperceptible to the consumer (\u0394E\u2080\u2080 \u2264 2)."))
+            elif dE_prod <= 4.0:
+                st.warning(t("\u26a0\ufe0f Perceptible en comparaci\u00f3n lado a lado, aceptable aislado.",
+                             "\u26a0\ufe0f Perceptible side by side, acceptable in isolation."))
+            else:
+                st.error(t("\u274c Diferencia evidente. Ajustar proporciones o a\u00f1adir corrector de tono.",
+                           "\u274c Obvious difference. Adjust ratios or add a hue corrector."))
+
+            st.caption(t("Umbrales provisionales. Sustituir por la tolerancia real del cliente "
+                         "cuando entregue el L*a*b* objetivo y la muestra f\u00edsica.",
+                         "Provisional thresholds. Replace with the customer tolerance once the "
+                         "target L*a*b* and physical sample are supplied."))
+        else:
+            st.caption(t("Sin mezcla activa.", "No active blend."))
+
+    st.markdown("---")
+
+    # ------------------------------------------------------------------
+    # BLOQUE 2 — Búsqueda libre por tono
+    # ------------------------------------------------------------------
+    st.subheader("\U0001F3AF " + t("B\u00fasqueda por tono", "Target hue search"))
     rc1, rc2 = st.columns([1, 2])
     with rc1:
-        target = st.color_picker(t("Color objetivo", "Target colour"), "#C0392B")
+        target = st.color_picker(t("Color objetivo", "Target colour"), ref_hue)
         st.markdown(f'<div style="background:{target};height:100px;border-radius:10px;'
                     f'border:1px solid #ccc;"></div>', unsafe_allow_html=True)
     with rc2:
-        hue = colorsys.rgb_to_hsv(*mcolors.to_rgb(target))[0] * 360
+        lab_t = srgb_to_lab(target)
         ranked = []
         for name, p in PIGMENTS.items():
-            hp = colorsys.rgb_to_hsv(*mcolors.to_rgb(p["hue"]))[0] * 360
-            dh = min(abs(hue - hp), 360 - abs(hue - hp))
+            dE = ciede2000(lab_t, srgb_to_lab(p["hue"]))
             R = full_result(name, stages, ph_val, antiox, ca_pct, ca_on, dosing, cook_loss)
-            ranked.append((R["delivered"] - dh * 1.4, name, dh, R["delivered"]))
+            ranked.append((R["delivered"] - dE * 1.6, name, dE, R["delivered"]))
         ranked.sort(reverse=True)
-        st.markdown("### 🏆 Ranking")
-        for _, name, dh, dv in ranked[:5]:
+        st.markdown("### \U0001F3C6 Ranking")
+        for _, name, dE, dv in ranked[:5]:
             st.markdown(
                 f"<span style='color:{PIGMENTS[name]['hue']};font-size:18px'>"
-                f"{'█' * max(1, int(dv / 10))}</span> **{name}** — "
-                f"Δ{t('tono','hue')} {dh:.0f}° · {t('entrega','delivery')} {dv:.0f}%",
+                f"{'\u2588' * max(1, int(dv / 10))}</span> **{name}** — "
+                f"\u0394E\u2080\u2080 {dE:.0f} \u00b7 {t('entrega','delivery')} {dv:.0f}%",
                 unsafe_allow_html=True)
         best = ranked[0]
         if best[3] < 25:
-            st.error(t("❌ Ningún pigmento entrega color suficiente con esta dosificación. "
-                       "Mover el punto de aplicación antes de cambiar de pigmento.",
-                       "❌ No pigment delivers enough colour with this dosing. "
+            st.error(t("\u274c Ning\u00fan pigmento entrega color suficiente con esta dosificaci\u00f3n. "
+                       "Mover el punto de aplicaci\u00f3n antes de cambiar de pigmento.",
+                       "\u274c No pigment delivers enough colour with this dosing. "
                        "Move the application point before changing pigment."))
-        elif best[2] > 25:
-            st.warning(t("⚠️ Ningún componente único cubre el tono. Usar mezcla.",
-                         "⚠️ No single component covers the hue. Use a blend."))
+        elif best[2] > 15:
+            st.warning(t("\u26a0\ufe0f Ning\u00fan componente \u00fanico cubre el tono. Usar mezcla.",
+                         "\u26a0\ufe0f No single component covers the hue. Use a blend."))
         else:
-            st.success(f"✅ **{best[1]}** — " + t("candidato principal", "lead candidate"))
+            st.success(f"\u2705 **{best[1]}** — " + t("candidato principal", "lead candidate"))
 
 st.caption("Confidential Robertet R&D — Regional Division.")
-
