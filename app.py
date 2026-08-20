@@ -270,49 +270,159 @@ PIGMENTS = {
 # ==========================================================================
 APP_POINTS = {
     "bath": dict(
-        es="Baño de agua", en="Water bath",
-        desc_es="Color disuelto en el agua de cocción; migra al producto.",
-        desc_en="Colour dissolved in the cooking water; migrates to the product.",
+        es="Baño / medio acuoso", en="Water bath / aqueous medium",
+        desc_es="Color disuelto en un agua externa; migra al producto. Solo aplica "
+                "cuando el producto se sumerge en un baño durante el proceso.",
+        desc_en="Colour dissolved in an external water phase; migrates into the product. "
+                "Only applies when the product is immersed in a bath during processing.",
         uptake={"oil": 0.10, "water": 0.55, "both": 0.30, "bind": 0.72},
         bound={"oil": 0.10, "water": 0.25, "both": 0.16, "bind": 0.74},
         leach={"oil": 0.340, "water": 0.300, "both": 0.320, "bind": 0.130},
     ),
-    "gel": dict(
-        es="Gel de alginato", en="Alginate gel",
-        desc_es="Color dosificado en el gel antes de la coextrusión.",
-        desc_en="Colour dosed into the gel before co-extrusion.",
+    "coating": dict(
+        es="Capa externa", en="Outer layer",
+        desc_es="Color en la capa que envuelve al producto: tripa de alginato, "
+                "recubrimiento, glaseado o gragea. Está donde se ve, pero sin núcleo "
+                "que lo proteja.",
+        desc_en="Colour in the layer that wraps the product: alginate casing, coating, "
+                "glaze or panning shell. It sits where it is seen, with no core to protect it.",
         uptake={"oil": 1.00, "water": 1.00, "both": 1.00, "bind": 1.00},
         bound={"oil": 0.62, "water": 0.26, "both": 0.44, "bind": 0.52},
         leach={"oil": 0.130, "water": 0.260, "both": 0.190, "bind": 0.150},
     ),
-    "meat": dict(
-        es="Masa cárnica", en="Meat emulsion",
-        desc_es="Color dosificado en la emulsión antes de formar.",
-        desc_en="Colour dosed into the emulsion before forming.",
+    "matrix": dict(
+        es="Matriz del producto", en="Product matrix",
+        desc_es="Color dosificado en el cuerpo del producto: emulsión cárnica, masa, "
+                "base láctea, líquido o pasta. El núcleo protege al pigmento.",
+        desc_en="Colour dosed into the body of the product: meat emulsion, dough, dairy "
+                "base, liquid or paste. The core protects the pigment.",
         uptake={"oil": 1.00, "water": 1.00, "both": 1.00, "bind": 1.00},
         bound={"oil": 0.70, "water": 0.30, "both": 0.50, "bind": 0.85},
         leach={"oil": 0.150, "water": 0.300, "both": 0.220, "bind": 0.120},
     ),
 }
 
+# Etiquetas del punto de aplicacion segun la categoria: el mecanismo fisico es el
+# mismo, pero "capa externa" es una tripa en carnicos y una gragea en confiteria.
+POINT_LABELS = {
+    "Meat":          {"bath": ("Baño de cocción", "Cooking bath"),
+                      "coating": ("Tripa de alginato", "Alginate casing"),
+                      "matrix": ("Masa cárnica", "Meat emulsion")},
+    "Dairy":         {"matrix": ("Base láctea", "Dairy base"),
+                      "coating": ("Capa superficial", "Surface layer")},
+    "Beverages":     {"matrix": ("Bebida", "Beverage")},
+    "Bakery":        {"matrix": ("Masa", "Dough"),
+                      "coating": ("Cobertura / glaseado", "Topping / glaze")},
+    "Sauces":        {"matrix": ("Salsa", "Sauce")},
+    "Confectionery": {"matrix": ("Masa de dulce", "Candy mass"),
+                      "coating": ("Gragea / recubrimiento", "Panning / coating")},
+}
+
+# ==========================================================================
+# CATEGORIAS DE APLICACION
+# --------------------------------------------------------------------------
+# substrate .. color de fondo sobre el que se lee el pigmento. Determinante:
+#              un carnico cocido es pardo y apaga el tono; una base lactea es
+#              blanca y lo realza. Pintar sobre uno u otro no es lo mismo.
+# immersed ... si el producto entra en contacto con un agua EXTERNA durante el
+#              proceso. Sin agua externa no hay lixiviacion posible: una bebida
+#              embotellada o un UHT en tubo no pueden perder color por lavado.
+# ==========================================================================
+APPLICATIONS = {
+    "Meat":          dict(es="Cárnicos", en="Meat", substrate="#8C6A5D",
+                          immersed=True,  cook_loss=True,  size_mm=22, icon="🥓"),
+    "Dairy":         dict(es="Lácteos", en="Dairy", substrate="#F7F1E4",
+                          immersed=False, cook_loss=False, size_mm=40, icon="🥛"),
+    "Beverages":     dict(es="Bebidas", en="Beverages", substrate="#FBF8F2",
+                          immersed=False, cook_loss=False, size_mm=60, icon="🥤"),
+    "Bakery":        dict(es="Panificación", en="Bakery", substrate="#E8D3A9",
+                          immersed=False, cook_loss=True,  size_mm=45, icon="🍞"),
+    "Sauces":        dict(es="Salsas", en="Sauces", substrate="#EDE2CB",
+                          immersed=False, cook_loss=False, size_mm=60, icon="🍅"),
+    "Confectionery": dict(es="Confitería", en="Confectionery", substrate="#FAF6EE",
+                          immersed=False, cook_loss=False, size_mm=18, icon="🍬"),
+}
+
 # etapa: (nombre, °C, min, O₂, húmeda?, agitación 0-1)
 PRESETS = {
+    # ---- Cárnicos: los únicos con inmersión real en agua externa ----
     t("Cárnico coextruido en alginato", "Alginate co-extruded meat"): [
-        (t("Fijado Ca²⁺", "Ca²⁺ setting"),   20, 2,  0.8, True,  0.3),
-        (t("Cocción en agua", "Water cook"), 82, 15, 1.0, True,  0.5),
-        (t("Horno seco", "Dry oven"),        70, 20, 1.6, False, 0.0),
-        (t("Enfriado en agua", "Water chill"), 7, 20, 0.9, True,  0.6),
+        (t("Fijado Ca²⁺", "Ca²⁺ setting"),     20, 2,  0.8, True,  0.3),
+        (t("Cocción en agua", "Water cook"),   82, 15, 1.0, True,  0.5),
+        (t("Horno seco", "Dry oven"),          70, 20, 1.6, False, 0.0),
+        (t("Enfriado en agua", "Water chill"),  7, 20, 0.9, True,  0.6),
     ],
     t("Cárnico en tripa natural", "Natural casing meat"): [
-        (t("Cocción en agua", "Water cook"), 78, 25, 1.0, True,  0.4),
-        (t("Enfriado en agua", "Water chill"), 5, 15, 0.9, True,  0.5),
+        (t("Cocción en agua", "Water cook"),   78, 25, 1.0, True,  0.4),
+        (t("Enfriado en agua", "Water chill"),  5, 15, 0.9, True,  0.5),
+    ],
+    t("Cárnico ahumado en horno", "Oven-smoked meat"): [
+        (t("Secado", "Drying"),                55, 20, 1.5, False, 0.0),
+        (t("Ahumado", "Smoking"),              65, 30, 1.6, False, 0.0),
+        (t("Cocción", "Cooking"),              75, 25, 1.3, False, 0.0),
+        (t("Ducha de enfriado", "Cold shower"), 8, 10, 0.9, True,  0.4),
+    ],
+    # ---- Bebidas ----
+    t("Bebida pasteurizada en botella", "Bottled pasteurised drink"): [
+        (t("Llenado en caliente", "Hot fill"),  88, 3,  0.5, False, 0.0),
+        (t("Sostenimiento", "Hold"),            85, 2,  0.4, False, 0.0),
+        (t("Enfriado en túnel", "Tunnel cool"), 25, 15, 0.5, False, 0.0),
+    ],
+    t("Bebida UHT aséptica", "Aseptic UHT drink"): [
+        ("UHT",                                140, 1,  0.3, False, 0.0),
+        (t("Enfriado", "Cooling"),              25, 3,  0.3, False, 0.0),
+    ],
+    # ---- Lácteos ----
+    t("Lácteo pasteurizado", "Pasteurised dairy"): [
+        (t("Pasteurización", "Pasteurisation"), 72, 15, 0.8, False, 0.0),
+        (t("Enfriado", "Cooling"),               6, 20, 0.6, False, 0.0),
+    ],
+    t("Yogur fermentado", "Fermented yoghurt"): [
+        (t("Tratamiento térmico", "Heat treat"), 90, 5,  0.8, False, 0.0),
+        (t("Fermentación", "Fermentation"),      43, 300, 0.4, False, 0.0),
+        (t("Enfriado", "Cooling"),                5, 30, 0.5, False, 0.0),
+    ],
+    # ---- Panificación ----
+    t("Horneado", "Baking"): [
+        (t("Horneado", "Baking"),              180, 25, 1.8, False, 0.0),
+        (t("Enfriado al aire", "Air cooling"),  25, 40, 1.2, False, 0.0),
+    ],
+    # ---- Salsas ----
+    t("Salsa en retorta", "Retorted sauce"): [
+        (t("Cocción", "Cooking"),               95, 20, 1.0, False, 0.0),
+        (t("Retorta", "Retort"),               121, 20, 0.4, False, 0.0),
+        (t("Enfriado", "Cooling"),              30, 25, 0.4, False, 0.0),
     ],
     t("Pasteurización simple", "Simple pasteurisation"): [
-        (t("Pasteurización", "Pasteurisation"), 72, 15, 1.0, True, 0.4)],
-    t("Esterilización UHT", "UHT sterilisation"): [
-        ("UHT", 140, 1, 0.7, True, 0.5)],
-    t("Horneado", "Baking"): [
-        (t("Horneado", "Baking"), 180, 25, 1.8, False, 0.0)],
+        (t("Pasteurización", "Pasteurisation"), 72, 15, 1.0, False, 0.0)],
+    # ---- Confitería ----
+    t("Cocción de dulce", "Candy cooking"): [
+        (t("Disolución", "Dissolving"),        105, 10, 0.8, False, 0.0),
+        (t("Cocción a vacío", "Vacuum cook"),  140, 4,  0.3, False, 0.0),
+        (t("Enfriado en mesa", "Table cooling"), 40, 12, 1.2, False, 0.0),
+    ],
+    t("Gragea / panning", "Panning"): [
+        (t("Aplicación de capas", "Layer build"), 24, 90, 1.4, False, 0.0),
+        (t("Secado", "Drying"),                   30, 45, 1.5, False, 0.0),
+    ],
+}
+
+# Que presets ofrece cada categoria, y cual viene por defecto
+PRESETS_BY_APP = {
+    "Meat": [t("Cárnico coextruido en alginato", "Alginate co-extruded meat"),
+             t("Cárnico en tripa natural", "Natural casing meat"),
+             t("Cárnico ahumado en horno", "Oven-smoked meat")],
+    "Beverages": [t("Bebida pasteurizada en botella", "Bottled pasteurised drink"),
+                  t("Bebida UHT aséptica", "Aseptic UHT drink"),
+                  t("Pasteurización simple", "Simple pasteurisation")],
+    "Dairy": [t("Lácteo pasteurizado", "Pasteurised dairy"),
+              t("Yogur fermentado", "Fermented yoghurt"),
+              t("Bebida UHT aséptica", "Aseptic UHT drink")],
+    "Bakery": [t("Horneado", "Baking")],
+    "Sauces": [t("Salsa en retorta", "Retorted sauce"),
+               t("Pasteurización simple", "Simple pasteurisation")],
+    "Confectionery": [t("Cocción de dulce", "Candy cooking"),
+                      t("Gragea / panning", "Panning")],
 }
 
 ANTIOX = {
@@ -421,12 +531,14 @@ def thermal_curve(name, stages, ph, ax, diameter_mm=22.0):
     return np.array(ts), np.array(ys), bounds
 
 
-def diffusive_exposure(stages, polarity, diameter_mm=22.0):
+def diffusive_exposure(stages, polarity, diameter_mm=22.0, immersed=True):
     """
     Exposición difusiva acumulada Θ, en min-equivalentes. Integra movilidad y
     agitación sobre el perfil de temperatura del producto, y para apolares
     aplica la compuerta de solidificación de grasa.
     """
+    if not immersed:
+        return 0.0          # sin agua externa no hay a donde lixiviar
     theta = 0.0
     for s in process_timeline(stages, diameter_mm):
         if not s["wet"]:
@@ -447,13 +559,14 @@ def driving_force(water_ratio, recirculated):
     return f * (0.55 if recirculated else 1.0)
 
 
-def aqueous_contact(stages, app_point="meat", diameter_mm=22.0):
+def aqueous_contact(stages, app_point="matrix", diameter_mm=22.0):
     """Compatibilidad: exposición difusiva de referencia (base hidrosoluble)."""
     return diffusive_exposure(stages, "water", diameter_mm)
 
 
 def physical_retention(name, app_point, stages, cook_loss_pct,
-                       diameter_mm=22.0, water_ratio=10.0, recirculated=False):
+                       diameter_mm=22.0, water_ratio=10.0, recirculated=False,
+                       immersed=True):
     """
     Captación x retención, con cinética de √t.
 
@@ -467,7 +580,7 @@ def physical_retention(name, app_point, stages, cook_loss_pct,
     pol = "oil" if p["pol"] == "oil" else "water"
     ap = APP_POINTS[app_point]
 
-    theta = (diffusive_exposure(stages, pol, diameter_mm)
+    theta = (diffusive_exposure(stages, pol, diameter_mm, immersed)
              * driving_force(water_ratio, recirculated))
     uptake = ap["uptake"][k]
     bound = ap["bound"][k]
@@ -485,9 +598,9 @@ def physical_retention(name, app_point, stages, cook_loss_pct,
     # Merma: la grasa y el agua exudan desde TODO el volumen. Es perdida de bulk
     # y no debe atribuirse a la capa superficial.
     drag = ((cook_loss_pct / 100.0) * (0.9 if pol == "oil" else 0.5)
-            if app_point == "meat" else 0.0)
+            if app_point == "matrix" else 0.0)
 
-    if app_point == "meat":
+    if app_point == "matrix":
         # Perdida total = lo que se va de la capa, ponderado por el peso de la capa.
         # Un producto grueso pierde menos en proporcion: menos superficie por volumen.
         retention = (1.0 - shell * d_shell) * (1.0 - drag)
@@ -518,7 +631,8 @@ def calcium_retention(name, ca_pct, ca_step_on):
 
 
 def full_result(name, stages, ph, ax, ca_pct, ca_on, dosing, cook_loss,
-                diameter_mm=22.0, water_ratio=10.0, recirculated=False):
+                diameter_mm=22.0, water_ratio=10.0, recirculated=False,
+                immersed=True):
     """
     dosing: dict {punto: fracción de dosis}. Puede tener 1, 2 o 3 puntos activos,
     o estar vacío.
@@ -532,7 +646,7 @@ def full_result(name, stages, ph, ax, ca_pct, ca_on, dosing, cook_loss,
         if share <= 0:
             continue
         ph_r = physical_retention(name, pt, stages, cook_loss,
-                                  diameter_mm, water_ratio, recirculated)
+                                  diameter_mm, water_ratio, recirculated, immersed)
         d = chem * ca * ph_r["phys"] * share
         delivered += d
         surf_num += chem * ca * ph_r["uptake"] * ph_r["surface"] * share
@@ -627,7 +741,8 @@ def ciede2000(lab1, lab2):
                          Rt * (dCp / (kC * Sc)) * (dHp / (kH * Sh))))
 
 
-def on_substrate(hex_color, delivered_pct, substrate=SUBSTRATE):
+def on_substrate(hex_color, delivered_pct, substrate=None):
+    substrate = substrate or globals().get("SUBSTRATE_HEX", SUBSTRATE)
     """Cómo se ve ese tono realmente sobre carne cocida, a la intensidad entregada."""
     alpha = min(max(delivered_pct / 100.0, 0.0), 1.0)
     fg = np.array(mcolors.to_rgb(hex_color))
@@ -645,7 +760,8 @@ def swatch(hex_color, label, sub=""):
 # MEZCLA — la formulación es el objeto principal, no un pigmento suelto
 # ==========================================================================
 def blend_result(components, stages, ph, ax, ca_pct, ca_on, dosing, cook_loss,
-                 diameter_mm=22.0, water_ratio=10.0, recirculated=False):
+                 diameter_mm=22.0, water_ratio=10.0, recirculated=False,
+                 immersed=True):
     """
     components: lista de (nombre, participación 0-1) ya normalizada.
     Una sola componente al 100% es un 'single'; la matemática es la misma.
@@ -656,7 +772,7 @@ def blend_result(components, stages, ph, ax, ca_pct, ca_on, dosing, cook_loss,
     rgb, weight = np.zeros(3), 0.0
     for name, share in components:
         R = full_result(name, stages, ph, ax, ca_pct, ca_on, dosing, cook_loss,
-                        diameter_mm, water_ratio, recirculated)
+                        diameter_mm, water_ratio, recirculated, immersed)
         parts.append((name, share, R))
         ys = share * R["ys"] if ys is None else ys + share * R["ys"]
         chem += share * R["chem"]
@@ -840,8 +956,31 @@ if len(components) > 1:
     st.sidebar.caption(t(f"Normalizado sobre {tot_dose}%.", f"Normalised over {tot_dose}%."))
 
 # ---------------------------------------------------------------- proceso
+st.sidebar.markdown("--- \n### 🏭 " + t("Aplicación final", "Target application"))
+app_key = st.sidebar.selectbox(
+    t("Categoría", "Category"), list(APPLICATIONS.keys()),
+    format_func=lambda k: f"{APPLICATIONS[k]['icon']} "
+                          f"{APPLICATIONS[k]['es'] if ES else APPLICATIONS[k]['en']}")
+APP = APPLICATIONS[app_key]
+SUBSTRATE_HEX = APP["substrate"]
+POINTS_AVAILABLE = list(POINT_LABELS[app_key].keys())
+default_point = "matrix"
+ref_pt_default = "bath" if app_key == "Meat" else "matrix"
+
+st.sidebar.caption(
+    t(f"Sustrato de fondo {SUBSTRATE_HEX}. "
+      + ("El producto se sumerge en agua durante el proceso, así que puede perder "
+         "color por lixiviación." if APP["immersed"] else
+         "Sin inmersión en agua externa: no hay lixiviación posible, solo "
+         "degradación química."),
+      f"Background substrate {SUBSTRATE_HEX}. "
+      + ("The product is immersed in water during processing, so it can lose colour "
+         "by leaching." if APP["immersed"] else
+         "No external water immersion: no leaching is possible, only chemical "
+         "degradation.")))
+
 st.sidebar.markdown("--- \n### ⚙️ " + t("Proceso", "Process"))
-preset = st.sidebar.selectbox(t("Preset", "Preset"), list(PRESETS.keys()))
+preset = st.sidebar.selectbox(t("Preset", "Preset"), PRESETS_BY_APP[app_key])
 st.sidebar.caption(t("Etapas activables.", "Toggleable stages."))
 raw_stages = PRESETS[preset]
 active_flags = [st.sidebar.checkbox(f"{s[0]} · {s[1]}°C · {s[2]}min", value=True,
@@ -877,7 +1016,7 @@ if not stages:
     st.stop()
 
 # ---------------------------------------------------------------- dosificación
-POINT_COLOR = {"bath": "#4A90D9", "gel": "#3E9E8F", "meat": "#C1974A"}
+POINT_COLOR = {"bath": "#4A90D9", "coating": "#3E9E8F", "matrix": "#C1974A"}
 
 st.sidebar.markdown("--- \n### 🎯 " + t("Punto de aplicación", "Application point"))
 st.sidebar.caption(t("**Dónde** se agrega el color en el proceso. No es la receta: "
@@ -886,9 +1025,11 @@ st.sidebar.caption(t("**Dónde** se agrega el color en el proceso. No es la rece
                      "that is set above, in Formulation."))
 
 dosing_raw = {}
-for key, ap in APP_POINTS.items():
-    name = ap["es"] if ES else ap["en"]
-    on = st.sidebar.checkbox(name, value=(key == "meat"), key=f"ap_{key}")
+for key in POINTS_AVAILABLE:
+    ap = APP_POINTS[key]
+    lab_es, lab_en = POINT_LABELS[app_key][key]
+    name = lab_es if ES else lab_en
+    on = st.sidebar.checkbox(name, value=(key == default_point), key=f"ap_{key}")
     if on:
         dosing_raw[key] = st.sidebar.slider(
             t(f"Reparto — {name}", f"Split — {name}"), 0, 100, 100, 5, key=f"sh_{key}")
@@ -906,7 +1047,7 @@ if dosing:
             f'margin:8px 0 6px"></div>'
             f'<div style="font-size:11.5px;color:#AFC0D0">'
             f'{t("Todo el color en", "All colour in")} '
-            f'<b style="color:#F2F5F8">{APP_POINTS[only]["es"] if ES else APP_POINTS[only]["en"]}</b>'
+            f'<b style="color:#F2F5F8">{POINT_LABELS[app_key][only][0 if ES else 1]}</b>'
             f'</div>', unsafe_allow_html=True)
     else:
         bar = "".join(
@@ -917,7 +1058,7 @@ if dosing:
             f'<span style="width:9px;height:9px;border-radius:2px;flex:0 0 auto;'
             f'background:{POINT_COLOR[k]}"></span>'
             f'<span style="flex:1;font-size:11.5px;color:#AFC0D0">'
-            f'{APP_POINTS[k]["es"] if ES else APP_POINTS[k]["en"]}</span>'
+            f'{POINT_LABELS[app_key][k][0 if ES else 1]}</span>'
             f'<b style="font-size:11.5px;color:#F2F5F8">{v*100:.0f}%</b></div>'
             for k, v in dosing.items())
         st.sidebar.markdown(
@@ -935,20 +1076,23 @@ else:
 
 # ---------------------------------------------------------------- condiciones
 st.sidebar.markdown("--- \n### 🔬 " + t("Condiciones", "Conditions"))
-ca_on = st.sidebar.checkbox(t("Baño de fijado con calcio", "Calcium setting bath"), value=True)
+ca_on = st.sidebar.checkbox(t("Baño de fijado con calcio", "Calcium setting bath"),
+                            value=(app_key == "Meat"), disabled=(app_key != "Meat"))
 ca_pct = st.sidebar.slider("CaCl₂ %", 0.0, 3.0, 1.0, 0.1, disabled=not ca_on)
 ph_val = st.sidebar.slider("pH", 2.0, 10.0, 5.8, 0.1)
-cook_loss = st.sidebar.slider(t("Merma de cocción (%)", "Cook loss (%)"), 0, 25, 6)
-diameter_mm = st.sidebar.slider(t("Diámetro del producto (mm)", "Product diameter (mm)"),
-                                8, 90, 22, 1,
+cook_loss = (st.sidebar.slider(t("Merma de cocción (%)", "Cook loss (%)"), 0, 25, 6)
+             if APP["cook_loss"] else 0)
+diameter_mm = st.sidebar.slider(t("Tamaño de pieza (mm)", "Piece size (mm)"),
+                                8, 90, APP["size_mm"], 1,
                                 help=t("Gobierna la inercia térmica y qué tan superficial "
                                        "es la pérdida de color.",
                                        "Drives thermal inertia and how superficial the "
                                        "colour loss is."))
+immersed = APP["immersed"]
 water_ratio = st.sidebar.slider(t("Baño — agua : producto", "Bath — water : product"),
-                                1.0, 30.0, 10.0, 1.0)
+                                1.0, 30.0, 10.0, 1.0, disabled=not immersed)
 recirculated = st.sidebar.checkbox(t("Baño recirculado / cargado", "Recirculated / loaded bath"),
-                                   value=False,
+                                   value=False, disabled=not immersed,
                                    help=t("Un baño saturado de pigmento extrae menos.",
                                           "A pigment-loaded bath extracts less."))
 antiox = st.sidebar.selectbox(t("Sistema antioxidante", "Antioxidant system"), list(ANTIOX.keys()))
@@ -960,7 +1104,7 @@ uv_idx = uv_opts.index(st.sidebar.selectbox(t("Empaque", "Packaging"), uv_opts, 
 months = st.sidebar.slider(t("Meses", "Months"), 1, 24, 6)
 
 B = blend_result(components, stages, ph_val, antiox, ca_pct, ca_on, dosing, cook_loss,
-                 diameter_mm, water_ratio, recirculated)
+                 diameter_mm, water_ratio, recirculated, immersed)
 
 # ==========================================================================
 # DASHBOARD
@@ -1057,7 +1201,7 @@ with tab_p:
         if first["breakdown"]:
             st.markdown("**" + t("Por punto de dosificación", "By dosing point") + "**")
             st.dataframe(pd.DataFrame([
-                {t("Punto", "Point"): APP_POINTS[k]["es"] if ES else APP_POINTS[k]["en"],
+                {t("Punto", "Point"): POINT_LABELS[app_key][k][0 if ES else 1],
                  t("Dosis", "Dose"): f"{v['share']*100:.0f}%",
                  t("Captación", "Uptake"): f"{v['uptake']*100:.0f}%",
                  t("Retención", "Retention"): f"{v['retention']*100:.0f}%",
@@ -1067,12 +1211,12 @@ with tab_p:
                 hide_index=True, use_container_width=True)
         st.caption(t(
             f"Exposición difusiva calculada sobre el perfil real de temperatura del "
-            f"producto: {diffusive_exposure(stages, 'water', diameter_mm):.0f} min-eq para "
-            f"hidrosolubles, {diffusive_exposure(stages, 'oil', diameter_mm):.0f} para "
+            f"producto: {diffusive_exposure(stages, 'water', diameter_mm, immersed):.0f} min-eq para "
+            f"hidrosolubles, {diffusive_exposure(stages, 'oil', diameter_mm, immersed):.0f} para "
             f"apolares — la grasa solidifica al enfriar y los inmoviliza.",
             f"Diffusive exposure computed on the product's real temperature profile: "
-            f"{diffusive_exposure(stages, 'water', diameter_mm):.0f} min-eq for water-soluble, "
-            f"{diffusive_exposure(stages, 'oil', diameter_mm):.0f} for apolar — fat solidifies "
+            f"{diffusive_exposure(stages, 'water', diameter_mm, immersed):.0f} min-eq for water-soluble, "
+            f"{diffusive_exposure(stages, 'oil', diameter_mm, immersed):.0f} for apolar — fat solidifies "
             f"on chilling and immobilises them."))
     with c2:
         gap = B["chem"] - B["delivered"]
@@ -1179,15 +1323,16 @@ with tab_d:
                                1, 2000, 60, 5,
                                help=t("Sobre producto terminado. Pídelo al cliente.",
                                       "On finished product. Ask the customer."))
-    ref_point = d2.selectbox(t("Dosificado en", "Dosed in"), list(APP_POINTS.keys()),
-                             format_func=lambda k: APP_POINTS[k]["es"] if ES else APP_POINTS[k]["en"],
-                             index=0)
+    ref_point = d2.selectbox(t("Dosificado en", "Dosed in"), POINTS_AVAILABLE,
+                             format_func=lambda k: POINT_LABELS[app_key][k][0 if ES else 1],
+                             index=POINTS_AVAILABLE.index(ref_pt_default)
+                             if ref_pt_default in POINTS_AVAILABLE else 0)
     batch = d3.number_input(t("Lote (kg)", "Batch (kg)"), 1, 100000, 1000, 100)
 
     Rref_d = full_result(REF_D, stages, ph_val, antiox, ca_pct, ca_on,
-                         {ref_point: 1.0}, cook_loss, diameter_mm, water_ratio, recirculated)
+                         {ref_point: 1.0}, cook_loss, diameter_mm, water_ratio, recirculated, immersed)
     cache_d = {n: full_result(n, stages, ph_val, antiox, ca_pct, ca_on, dosing,
-                              cook_loss, diameter_mm, water_ratio, recirculated)
+                              cook_loss, diameter_mm, water_ratio, recirculated, immersed)
                for n in {p[0] for p in B["parts"]}}
     est = dose_estimate([(n, s) for n, s, _ in B["parts"]], cache_d, REF_D, ref_dose, Rref_d)
 
@@ -1268,9 +1413,9 @@ with tab_d:
         # El punto de aplicación mueve la dosis tanto como el pigmento
         if dosing:
             alt_pts = {}
-            for pt in APP_POINTS:
+            for pt in POINTS_AVAILABLE:
                 c_alt = {n: full_result(n, stages, ph_val, antiox, ca_pct, ca_on,
-                                        {pt: 1.0}, cook_loss, diameter_mm, water_ratio, recirculated)
+                                        {pt: 1.0}, cook_loss, diameter_mm, water_ratio, recirculated, immersed)
                          for n, _, _ in B["parts"]}
                 e_alt = dose_estimate([(n, s) for n, s, _ in B["parts"]],
                                       c_alt, REF_D, ref_dose, Rref_d)
@@ -1278,12 +1423,12 @@ with tab_d:
             st.markdown("**" + t("Misma formulación, distinto punto de aplicación",
                                  "Same formulation, different application point") + "**")
             st.dataframe(pd.DataFrame([
-                {t("Punto", "Point"): APP_POINTS[k]["es"] if ES else APP_POINTS[k]["en"],
+                {t("Punto", "Point"): POINT_LABELS[app_key][k][0 if ES else 1],
                  t("Dosis requerida", "Required dose"):
                      (t("inviable", "unviable") if v and v > MAX_PPM
                       else f"{v:,.0f} ppm".replace(",", " ") if v else "—"),
                  t("Veces vs. masa", "Times vs. meat"):
-                     f"{v/alt_pts['meat']:.1f}×" if v and alt_pts.get("meat") else "—"}
+                     f"{v/alt_pts['matrix']:.1f}×" if v and alt_pts.get("matrix") else "—"}
                 for k, v in alt_pts.items()]), hide_index=True, use_container_width=True)
 
     st.caption(t("Los índices de fuerza colorante son órdenes de magnitud, no valores "
@@ -1295,8 +1440,8 @@ with tab_d:
 
 with tab_r:
     REF = "Red 40 + Yellow 6"
-    Rref = full_result(REF, stages, ph_val, antiox, ca_pct, ca_on, {"bath": 1.0},
-                       cook_loss, diameter_mm, water_ratio, recirculated)
+    Rref = full_result(REF, stages, ph_val, antiox, ca_pct, ca_on, {ref_pt_default: 1.0},
+                       cook_loss, diameter_mm, water_ratio, recirculated, immersed)
     ref_hue = PIGMENTS[REF]["hue"]
     ref_sub = on_substrate(ref_hue, Rref["delivered"])
     blend_sub = on_substrate(B["hex"], B["delivered"])
@@ -1312,7 +1457,7 @@ with tab_r:
 
     # Resultados por pigmento, reutilizados por el optimizador
     cache = {n: full_result(n, stages, ph_val, antiox, ca_pct, ca_on, dosing, cook_loss,
-                            diameter_mm, water_ratio, recirculated)
+                            diameter_mm, water_ratio, recirculated, immersed)
              for n in PIGMENTS}
     alt = suggest_alternative(ref_sub, cache, REF) if dosing else None
 
